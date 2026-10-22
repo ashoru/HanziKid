@@ -13,3 +13,6 @@ xcuserdata/
 *.xcuserstate
 .swiftpm/
 .tmp/
+
+# 打包产物
+dist/

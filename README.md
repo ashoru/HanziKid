@@ -57,6 +57,34 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 > 1. Xcode 的宏插件子进程要自己再套一层 `sandbox-exec`，被当前沙箱禁止 → 需要 `OTHER_SWIFT_FLAGS="-disable-sandbox"`，否则 `@Model` 全部编译失败。
 > 2. 环境里没有 PTY，`xcodebuild test` 起不了测试宿主 → 用 `./Tools/check_logic.sh` 在 macOS 上跑同一套逻辑断言；在正常机器上仍然可以直接 ⌘U 跑 `HanziKidTests`。
 
+## 打包成无签名 IPA
+
+```bash
+./Tools/package_ipa.sh
+# → dist/HanziKid-unsigned.ipa（约 4.4 MB，Payload/HanziKid.app，arm64，iPad only，最低 iOS 17）
+```
+
+产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
+
+| 项 | 值 |
+|---|---|
+| Bundle ID | `com.tangfengjing.hanzikid` |
+| 版本 | 0.1（Build 1） |
+| 架构 | arm64（真机） |
+| 最低系统 | iOS 17.0 |
+| 设备族 | 仅 iPad（UIDeviceFamily = 2） |
+| 签名 | 完全没有签名（`code object is not signed at all`） |
+| 大小 | 约 4.5 MB（12.5 MB 解包，主要是 3500 字的笔顺数据） |
+
+**无签名 IPA 不能直接装进 iPad**，需要先用你自己的 Apple ID 重签一次：
+
+- **Sideloadly / AltStore / ESign / 爱思助手**：把 ipa 拖进去，登录 Apple ID，它会替换签名再装到设备（免费账号签的证书 **7 天过期**，需要重签；付费开发者账号 1 年）
+- 装完首次打开要去「设置 → 通用 → VPN 与设备管理」信任证书
+- 免费账号还需要在「设置 → 隐私与安全 → 开发者模式」里打开开发者模式（iOS 16+）
+- 如果你的 iPad 是支持 TrollStore 的系统版本，也可以直接用它永久安装（不用证书）
+
+因为重签会改 Bundle ID（多数工具默认改），App 的数据是按 Bundle ID 存的，**换工具重签后可能看不到之前的进度**，建议固定用同一个工具 + 同一个 Bundle ID。
+
 ### 调试用的启动参数（仅 DEBUG）
 
 ```bash
@@ -93,7 +121,8 @@ HanziKidTests/     调度器 / 排程 / 会话的单元测试（XCTest）
 Tools/
 ├─ build_base_library.py   从开源数据生成内置字库
 ├─ logic_checks/main.swift 无 PTY 环境下的逻辑断言
-├─ build.sh / check_logic.sh
+├─ build.sh / check_logic.sh / package_ipa.sh  构建 / 逻辑测试 / 打无签名 IPA
+├─ make_icon.swift                            生成 1024 图标（改图标跑这个）
 └─ raw/                    原始数据（已 gitignore，脚本会自动下载）
 ```
 
