@@ -1,16 +1,12 @@
 import SwiftUI
-import SwiftData
+
 
 /// 今日任务（默认落地页）
 struct TodayView: View {
     let profile: Profile
     var onSwitchProfile: () -> Void
 
-    @Environment(\.modelContext) private var context
-    @Query private var allStates: [SRSState]
-    @Query private var allCards: [CharacterCard]
-    @Query private var decks: [Deck]
-    @Query private var logs: [ReviewLog]
+    @EnvironmentObject private var store: AppStore
 
     @State private var isStudying = false
     @State private var sessionItems: [StudyItem] = []
@@ -18,11 +14,11 @@ struct TodayView: View {
     @State private var showingLibrary = false
     @State private var showingCapture = false
 
-    private var myStates: [SRSState] { allStates.filter { $0.profileID == profile.id } }
+    private var myStates: [SRSState] { store.states(for: profile.id) }
 
     private var currentDeck: Deck? {
-        decks.first { $0.name == profile.activeDeckName }
-            ?? decks.first { $0.level == profile.level }
+        store.deck(named: profile.activeDeckName)
+            ?? store.decks(for: profile.level).first
     }
 
     private var plan: TodayPlanner.Plan {
@@ -33,15 +29,14 @@ struct TodayView: View {
     private var learningCount: Int { myStates.filter { $0.cardState == .review || $0.cardState == .learning }.count }
     private var todayLogCount: Int {
         let calendar = Calendar.current
-        return logs.filter { $0.profileID == profile.id && calendar.isDateInToday($0.reviewedAt) }.count
+        return store.logs.filter { $0.profileID == profile.id && calendar.isDateInToday($0.reviewedAt) }.count
     }
 
     private var recentCards: [CharacterCard] {
-        let byHanzi = Dictionary(allCards.map { ($0.hanzi, $0) }, uniquingKeysWith: { a, _ in a })
         let sorted = myStates
             .filter { $0.lastReviewedAt != nil }
             .sorted { ($0.lastReviewedAt ?? .distantPast) > ($1.lastReviewedAt ?? .distantPast) }
-        return sorted.prefix(14).compactMap { byHanzi[$0.hanzi] }
+        return sorted.prefix(14).compactMap { store.card(for: $0.hanzi) }
     }
 
     var body: some View {
@@ -92,7 +87,7 @@ struct TodayView: View {
                 StudyView(profile: profile, items: sessionItems)
             }
             .onAppear(perform: handleDemoArguments)
-            .onChange(of: isStudying) { _, presenting in
+            .onChange(of: isStudying) { presenting in
                 SpeechService.shared.configure()
                 if !presenting { sessionItems = [] }
             }
@@ -109,7 +104,7 @@ struct TodayView: View {
         if let index = arguments.firstIndex(of: "--demo-char"), index + 1 < arguments.count {
             let hanzi = arguments[index + 1]
             sessionItems = [StudyItem(hanzi: hanzi, kind: .new, schedule: Schedule())]
-            // 等 @Query 把字卡查出来再进学习页
+            // 等界面把字卡读出来再进学习页
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { isStudying = true }
             return
         }
@@ -223,8 +218,7 @@ struct TodayView: View {
                 .disabled(plan.isEmpty)
 
                 Button {
-                    profile.addBonus(new: 3)
-                    try? context.save()
+                    store.updateProfile(profile.id) { $0.addBonus(new: 3) }
                 } label: {
                     VStack(spacing: 2) {
                         Text("＋3")

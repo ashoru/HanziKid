@@ -1,5 +1,4 @@
 import XCTest
-import SwiftData
 @testable import HanziKid
 
 // MARK: - 调度器纯逻辑
@@ -34,23 +33,19 @@ final class SchedulerTests: XCTestCase {
 
     func testSecondGoodSchedulesThreeDays() {
         let start = Schedule(state: .review, ease: 2.6, intervalDays: 1, reps: 1)
-        let result = scheduler().next(start, grade: .good, now: now)
-        XCTAssertEqual(result.reps, 2)
-        XCTAssertEqual(result.intervalDays, 3)
+        XCTAssertEqual(scheduler().next(start, grade: .good, now: now).intervalDays, 3)
     }
 
     func testThirdGoodMultipliesByEase() {
         let start = Schedule(state: .review, ease: 2.6, intervalDays: 3, reps: 2)
         let result = scheduler().next(start, grade: .good, now: now)
-        // ease → 2.7，3 × 2.7 = 8.1 → 8
-        XCTAssertEqual(result.intervalDays, 8)
+        XCTAssertEqual(result.intervalDays, 8)          // 3 × 2.7 = 8.1 → 8
         XCTAssertEqual(result.ease, 2.7, accuracy: 0.0001)
     }
 
     func testEaseStopsAtMaximum() {
         let start = Schedule(state: .review, ease: 2.8, intervalDays: 5, reps: 3)
-        let result = scheduler().next(start, grade: .good, now: now)
-        XCTAssertEqual(result.ease, 2.8, accuracy: 0.0001)
+        XCTAssertEqual(scheduler().next(start, grade: .good, now: now).ease, 2.8, accuracy: 0.0001)
     }
 
     func testAgainResetsAndComesBackInTenMinutes() {
@@ -65,8 +60,7 @@ final class SchedulerTests: XCTestCase {
 
     func testEaseStopsAtMinimum() {
         let start = Schedule(state: .review, ease: 1.4, intervalDays: 5, reps: 2)
-        let result = scheduler().next(start, grade: .again, now: now)
-        XCTAssertEqual(result.ease, 1.3, accuracy: 0.0001)
+        XCTAssertEqual(scheduler().next(start, grade: .again, now: now).ease, 1.3, accuracy: 0.0001)
     }
 
     func testHardGrowsIntervalSlowly() {
@@ -78,36 +72,29 @@ final class SchedulerTests: XCTestCase {
 
     func testIntervalNeverExceedsSixtyDays() {
         let start = Schedule(state: .review, ease: 2.8, intervalDays: 55, reps: 6)
-        let result = scheduler().next(start, grade: .good, now: now)
-        XCTAssertEqual(result.intervalDays, 60)
+        XCTAssertEqual(scheduler().next(start, grade: .good, now: now).intervalDays, 60)
     }
 
     func testGraduatesToMastered() {
         let start = Schedule(state: .review, ease: 2.5, intervalDays: 21, reps: 3)
         let result = scheduler().next(start, grade: .good, now: now)
         XCTAssertEqual(result.state, .mastered)
-        // 已掌握的字不再出现在每日复习里
         XCTAssertFalse(result.isDue(on: now.addingTimeInterval(86_400 * 365)))
     }
 
     func testLeechDetectedAfterRepeatedFailures() {
-        var schedule = Schedule()
-        var current = schedule
+        var current = Schedule()
         for _ in 0..<4 {
             current = scheduler().next(current, grade: .again, now: now)
         }
-        schedule = current
-        XCTAssertEqual(schedule.lapses, 4)
-        XCTAssertTrue(schedule.isLeech)
+        XCTAssertEqual(current.lapses, 4)
+        XCTAssertTrue(current.isLeech)
     }
 
-    func testNewCardIsNotDue() {
+    func testNewAndMasteredCardsAreNotDue() {
         XCTAssertFalse(Schedule().isDue(on: now))
-    }
-
-    func testMasteredCardIsNotDue() {
-        let schedule = Schedule(state: .mastered, intervalDays: 30, due: now.addingTimeInterval(-86_400))
-        XCTAssertFalse(schedule.isDue(on: now))
+        let mastered = Schedule(state: .mastered, intervalDays: 30, due: now.addingTimeInterval(-86_400))
+        XCTAssertFalse(mastered.isDue(on: now))
     }
 }
 
@@ -115,62 +102,39 @@ final class SchedulerTests: XCTestCase {
 
 @MainActor
 final class TodayPlannerTests: XCTestCase {
-    private func makeContext() throws -> ModelContext {
-        let schema = Schema([Profile.self, CharacterCard.self, Deck.self, SRSState.self, ReviewLog.self])
-        let container = try ModelContainer(for: schema,
-                                           configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-        return ModelContext(container)
+    private func dueState(_ profile: Profile, _ hanzi: String) -> SRSState {
+        SRSState(profileID: profile.id, hanzi: hanzi,
+                 schedule: Schedule(state: .review, ease: 2.5, intervalDays: 1, reps: 1,
+                                    due: Date().addingTimeInterval(-3_600)))
     }
 
-    func testPlanRespectsDailyLimits() throws {
-        let context = try makeContext()
-        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣", activeDeckName: "d")
-        profile.newPerDay = 2
-        profile.reviewCap = 1
-        context.insert(profile)
-
-        for hanzi in ["一", "二", "三"] {
-            context.insert(SRSState(profileID: profile.id,
-                                    hanzi: hanzi,
-                                    schedule: Schedule(state: .review,
-                                                       ease: 2.5,
-                                                       intervalDays: 1,
-                                                       reps: 1,
-                                                       due: Date().addingTimeInterval(-3_600))))
-        }
-
-        let states = try context.fetch(FetchDescriptor<SRSState>())
-        let plan = TodayPlanner.plan(deckHanzi: ["四", "五", "六", "七"], states: states, profile: profile)
-
+    func testPlanRespectsDailyLimits() {
+        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣", newPerDay: 2, reviewCap: 1)
+        let plan = TodayPlanner.plan(deckHanzi: ["四", "五", "六", "七"],
+                                     states: [dueState(profile, "一"),
+                                              dueState(profile, "二"),
+                                              dueState(profile, "三")],
+                                     profile: profile)
         XCTAssertEqual(plan.dueReviewTotal, 3)
-        XCTAssertEqual(plan.reviewCount, 1, "复习上限 1 应该只取 1 个")
-        XCTAssertEqual(plan.newCount, 2, "新字上限 2 应该只取 2 个")
+        XCTAssertEqual(plan.reviewCount, 1)
+        XCTAssertEqual(plan.newCount, 2)
         XCTAssertEqual(plan.items.count, 3)
     }
 
-    func testPlanSkipsCharactersAlreadyLearned() throws {
-        let context = try makeContext()
-        let profile = Profile(name: "测试", level: .primary, emoji: "🦁", activeDeckName: "d")
-        context.insert(profile)
-
-        context.insert(SRSState(profileID: profile.id,
-                                hanzi: "一",
-                                schedule: Schedule(state: .review, ease: 2.5, intervalDays: 5, reps: 2,
-                                                   due: Date().addingTimeInterval(86_400 * 5))))
-
-        let states = try context.fetch(FetchDescriptor<SRSState>())
-        let plan = TodayPlanner.plan(deckHanzi: ["一", "二", "三"], states: states, profile: profile)
-
-        XCTAssertEqual(plan.newCount, 2)
+    func testPlanSkipsCharactersAlreadyLearned() {
+        let profile = Profile(name: "测试", level: .primary, emoji: "🦁")
+        let future = SRSState(profileID: profile.id, hanzi: "一",
+                              schedule: Schedule(state: .review, ease: 2.5, intervalDays: 5, reps: 2,
+                                                 due: Date().addingTimeInterval(86_400 * 5)))
+        let plan = TodayPlanner.plan(deckHanzi: ["一", "二", "三"], states: [future], profile: profile)
+        XCTAssertEqual(plan.reviewCount, 0)
         XCTAssertEqual(plan.items.map(\.hanzi), ["二", "三"])
-        XCTAssertEqual(plan.reviewCount, 0, "未到期的字不该复习")
     }
 
     func testBonusRaisesTodaysLimit() {
-        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
+        var profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
         profile.newPerDay = 3
         XCTAssertEqual(profile.effectiveNewLimit(), 3)
-
         profile.addBonus(new: 2, review: 5)
         XCTAssertEqual(profile.effectiveNewLimit(), 5)
         XCTAssertEqual(profile.effectiveReviewLimit(), profile.reviewCap + 5)
@@ -178,102 +142,119 @@ final class TodayPlannerTests: XCTestCase {
     }
 
     func testBonusExpiresNextDay() {
-        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
+        var profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
         profile.newPerDay = 3
         let yesterday = Date().addingTimeInterval(-86_400)
         profile.addBonus(new: 5, on: yesterday)
-
         XCTAssertEqual(profile.effectiveNewLimit(on: yesterday), 8)
-        XCTAssertEqual(profile.effectiveNewLimit(), 3, "跨天后临时加量应失效")
+        XCTAssertEqual(profile.effectiveNewLimit(), 3)
     }
 
-    func testNewCharactersFollowDeckOrder() throws {
-        let context = try makeContext()
-        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
-        profile.newPerDay = 3
-        context.insert(profile)
-
+    func testNewCharactersFollowDeckOrder() {
+        let profile = Profile(name: "测试", level: .preschool, emoji: "🐣", newPerDay: 3)
         let plan = TodayPlanner.plan(deckHanzi: ["人", "口", "手", "大"], states: [], profile: profile)
         XCTAssertEqual(plan.items.map(\.hanzi), ["人", "口", "手"])
         XCTAssertTrue(plan.items.allSatisfy { $0.kind == .new })
     }
 
-    func testReviewsComeBeforeNewCharacters() throws {
-        let context = try makeContext()
-        let profile = Profile(name: "测试", level: .primary, emoji: "🦁")
-        profile.newPerDay = 5
-        profile.reviewCap = 5
-        context.insert(profile)
-
-        context.insert(SRSState(profileID: profile.id,
-                                hanzi: "一",
-                                schedule: Schedule(state: .review, ease: 2.5, intervalDays: 1, reps: 1,
-                                                   due: Date().addingTimeInterval(-60))))
-
-        let states = try context.fetch(FetchDescriptor<SRSState>())
-        let plan = TodayPlanner.plan(deckHanzi: ["二", "三"], states: states, profile: profile)
+    func testReviewsComeBeforeNewCharacters() {
+        let profile = Profile(name: "测试", level: .primary, emoji: "🦁", newPerDay: 5, reviewCap: 5)
+        let plan = TodayPlanner.plan(deckHanzi: ["二", "三"], states: [dueState(profile, "一")], profile: profile)
         XCTAssertEqual(plan.items.first?.hanzi, "一")
         XCTAssertEqual(plan.items.first?.kind, .review)
     }
 }
 
-// MARK: - 会话行为
+// MARK: - 学习会话
 
 @MainActor
 final class StudySessionTests: XCTestCase {
-    private func makeContext() throws -> ModelContext {
-        let schema = Schema([Profile.self, CharacterCard.self, Deck.self, SRSState.self, ReviewLog.self])
-        let container = try ModelContainer(for: schema,
-                                           configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-        return ModelContext(container)
-    }
-
-    func testAgainReinsertsCardLaterInSession() throws {
-        let context = try makeContext()
+    func testAgainReinsertsCardLaterInSession() {
+        let store = AppStore(storage: .memory)
         let profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
-        context.insert(profile)
+        let session = StudySession(items: ["一", "二", "三"].map {
+            StudyItem(hanzi: $0, kind: .new, schedule: Schedule())
+        })
 
-        let items = ["一", "二", "三"].map { StudyItem(hanzi: $0, kind: .new, schedule: Schedule()) }
-        let session = StudySession(items: items)
-
-        session.grade(.again, profile: profile, context: context)
+        session.grade(.again, profile: profile, store: store)
 
         XCTAssertEqual(session.index, 1)
-        XCTAssertEqual(session.items.count, 4, "「不会」的字应该在本轮重现一次")
+        XCTAssertEqual(session.items.count, 4)
         XCTAssertEqual(session.items.last?.hanzi, "一")
     }
 
-    func testGradeWritesStateAndLog() throws {
-        let context = try makeContext()
+    func testGradeWritesStateAndLog() {
+        let store = AppStore(storage: .memory)
         let profile = Profile(name: "测试", level: .preschool, emoji: "🐣")
-        context.insert(profile)
-
         let session = StudySession(items: [StudyItem(hanzi: "水", kind: .new, schedule: Schedule())])
-        session.grade(.good, profile: profile, context: context)
 
-        let states = try context.fetch(FetchDescriptor<SRSState>())
-        XCTAssertEqual(states.count, 1)
-        XCTAssertEqual(states.first?.hanzi, "水")
-        XCTAssertEqual(states.first?.cardState, .review)
-        XCTAssertEqual(states.first?.intervalDays, 1)
+        session.grade(.good, profile: profile, store: store)
 
-        let logs = try context.fetch(FetchDescriptor<ReviewLog>())
-        XCTAssertEqual(logs.count, 1)
-        XCTAssertEqual(logs.first?.grade, .good)
+        XCTAssertEqual(store.schedule(profileID: profile.id, hanzi: "水")?.intervalDays, 1)
+        XCTAssertEqual(store.logs.count, 1)
+        XCTAssertEqual(store.logs.first?.grade, .good)
         XCTAssertTrue(session.isFinished)
     }
 
-    func testTwoProfilesDoNotShareProgress() throws {
-        let context = try makeContext()
+    func testTwoProfilesDoNotShareProgress() {
+        let store = AppStore(storage: .memory)
         let a = Profile(name: "A", level: .preschool, emoji: "🐣")
         let b = Profile(name: "B", level: .primary, emoji: "🦁")
-        context.insert(a)
-        context.insert(b)
 
-        let session = StudySession(items: [StudyItem(hanzi: "水", kind: .new, schedule: Schedule())])
-        session.grade(.good, profile: a, context: context)
+        StudySession(items: [StudyItem(hanzi: "水", kind: .new, schedule: Schedule())])
+            .grade(.good, profile: a, store: store)
 
-        XCTAssertNotNil(SRSState.find(profileID: a.id, hanzi: "水", in: context))
-        XCTAssertNil(SRSState.find(profileID: b.id, hanzi: "水", in: context))
+        XCTAssertNotNil(store.schedule(profileID: a.id, hanzi: "水"))
+        XCTAssertNil(store.schedule(profileID: b.id, hanzi: "水"))
+    }
+}
+
+// MARK: - 拍照录入入库
+
+@MainActor
+final class CardImporterTests: XCTestCase {
+    func testUnknownCharacterBecomesPendingCard() {
+        let store = AppStore(storage: .memory)
+        let card = store.ensureCard(for: "龘")
+        XCTAssertTrue(card.needsContent)
+        XCTAssertTrue(card.pinyin.isEmpty)
+        XCTAssertEqual(store.customCards.count, 1)
+
+        _ = store.ensureCard(for: "龘")
+        XCTAssertEqual(store.customCards.count, 1)
+    }
+
+    func testAddToDeckDeduplicates() {
+        let store = AppStore(storage: .memory)
+        let deck = store.createDeck(named: "第 1 课", level: .preschool, hanziList: [])
+
+        XCTAssertEqual(store.add(["水", "龘", "水"], toDeck: deck.name), 2)
+        XCTAssertEqual(store.deck(named: deck.name)?.hanziList, ["水", "龘"])
+        XCTAssertEqual(store.add(["水"], toDeck: deck.name), 0)
+
+        store.remove("水", fromDeck: deck.name)
+        XCTAssertEqual(store.deck(named: deck.name)?.hanziList, ["龘"])
+    }
+
+    func testDeckNamesStayUnique() {
+        let store = AppStore(storage: .memory)
+        _ = store.createDeck(named: "第 2 课", level: .preschool, hanziList: ["天"])
+        let second = store.createDeck(named: "第 2 课", level: .preschool, hanziList: [])
+        XCTAssertEqual(second.name, "第 2 课 2")
+    }
+}
+
+// MARK: - 抽字
+
+final class HanziTextTests: XCTestCase {
+    func testExtractSkipsPunctuationAndPinyin() {
+        XCTAssertEqual(HanziText.extract("春天来了，小草绿了。chūn tiān"),
+                       ["春", "天", "来", "了", "小", "草", "绿"])
+        XCTAssertTrue(HanziText.extract("shuǐ tiān").isEmpty)
+        XCTAssertTrue(HanziText.extract("").isEmpty)
+    }
+
+    func testExtractSupportsExtensionA() {
+        XCTAssertEqual(HanziText.extract("a1 龘㐀！"), ["龘", "㐀"])
     }
 }

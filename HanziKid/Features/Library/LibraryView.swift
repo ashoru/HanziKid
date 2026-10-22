@@ -1,14 +1,10 @@
 import SwiftUI
-import SwiftData
 
 /// 字库：浏览内置 800 字，把要学的字加进当前字表
 struct LibraryView: View {
     let profile: Profile
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: [SortDescriptor(\CharacterCard.frequency, order: .reverse)]) private var cards: [CharacterCard]
-    @Query private var decks: [Deck]
-    @Query private var allStates: [SRSState]
+    @EnvironmentObject private var store: AppStore
 
     @State private var searchText = ""
     @State private var selection: Selection?
@@ -30,14 +26,16 @@ struct LibraryView: View {
     }
 
     private var deck: Deck? {
-        decks.first { $0.name == profile.activeDeckName }
-            ?? decks.first { $0.level == profile.level }
+        store.deck(named: profile.activeDeckName)
+            ?? store.decks(for: profile.level).first
     }
+
+    private var cards: [CharacterCard] { store.allCards }
 
     private var deckSet: Set<String> { Set(deck?.hanziList ?? []) }
 
     private var myStates: [String: SRSState] {
-        Dictionary(allStates.filter { $0.profileID == profile.id }.map { ($0.hanzi, $0) },
+        Dictionary(store.states(for: profile.id).map { ($0.hanzi, $0) },
                    uniquingKeysWith: { a, _ in a })
     }
 
@@ -230,12 +228,11 @@ struct LibraryView: View {
 
     private func toggleDeck(_ card: CharacterCard) {
         guard let deck else { return }
-        if let index = deck.hanziList.firstIndex(of: card.hanzi) {
-            deck.hanziList.remove(at: index)
+        if deck.hanziList.contains(card.hanzi) {
+            store.remove(card.hanzi, fromDeck: deck.name)
         } else {
-            deck.hanziList.append(card.hanzi)
+            store.add([card.hanzi], toDeck: deck.name)
         }
-        try? context.save()
         selection = Selection(id: card.hanzi, card: card)
     }
 }

@@ -224,6 +224,9 @@ lastReviewedAt
 
 ## 6. 技术方案
 
+> 2026-10-22 调整：为了支持 iOS 16.3（家里的 iPad），数据层从 SwiftData 换成 **Codable 值类型 + JSON 持久化**（`Services/AppStore.swift`），不再依赖 iOS 17。模型无关系查询需求（按 profileID / hanzi 取），值类型让 SwiftUI 更新和测试都更直接。
+
+
 ### 6.1 推荐栈：SwiftUI 原生（iPadOS 17+）
 
 理由：这台机器有 Xcode 26.6，原生方案在 **OCR（Vision）、笔顺渲染（SwiftUI Path/WebView）、TTS（AVSpeechSynthesizer）、离线存储（SwiftData）、手指描红低延迟** 上都是最优；无需服务器，家长零运维。
@@ -232,7 +235,7 @@ lastReviewedAt
 App (SwiftUI, iPad 优先)
 ├─ 表现层    TodayView / StudyView / ReviewView / DeckView / ReportView
 ├─ 领域层    Scheduler(SM-2) · StudySessionEngine · CardContentResolver
-├─ 数据层    SwiftData: CharacterCard, Deck, ReviewLog, Settings
+├─ 数据层    AppStore: CharacterCard, Deck, SRSState, ReviewLog + JSON 持久化
 ├─ 能力层
 │   ├─ OCRService        Vision (VNRecognizeTextRequest, zh-Hans, 离线)
 │   ├─ StrokeService     本地笔顺数据 → hanzi-writer (WKWebView) 或原生渲染
@@ -406,7 +409,7 @@ wordstudy/
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| Xcode 工程（SwiftUI + SwiftData，iPad） | ✅ | synchronized folder 结构，加文件不用改工程 |
+| Xcode 工程（SwiftUI，iPad，iOS 16.0+） | ✅ | synchronized folder 结构，加文件不用改工程 |
 | 双档案（5 岁 / 四年级） | ✅ | 字卡共享、进度与每日量各自独立 |
 | 内置离线字库 800 字 | ✅ | 拼音 / 部首 / 笔画 / 释义 / 组词 / 笔顺（含中线），`Tools/build_base_library.py` 一键重建 |
 | 一页一字学习页 | ✅ | 米字格 + 原生逐笔动画、点击发音、组词发音、释义 |

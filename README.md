@@ -2,7 +2,7 @@
 
 给自家孩子做的 **iPad 识字 App**。一页一个字：大字、笔顺动画、发音、组词、释义，孩子自己点「会了 / 有点忘 / 不会」，系统按记忆曲线（SM-2）安排下次复习。
 
-原生 SwiftUI + SwiftData，**学习时完全离线**，两个孩子的进度各自独立。
+原生 SwiftUI，**学习时完全离线、无任何第三方依赖**，两个孩子的进度各自独立。最低支持 **iOS 16.0**（iPadOS 16.3 实测目标）。
 
 | 选孩子 | 今日任务 | 学习页 |
 |---|---|---|
@@ -39,7 +39,7 @@
 
 ## 构建与运行
 
-需要 Xcode 16+（本机用的是 Xcode 26.6，iOS 26.5 SDK，部署目标 iOS 17.0）。
+需要 Xcode 16+（本机用的是 Xcode 26.6，iOS 26.5 SDK）。**部署目标 iOS 16.0**，编译时即做可用性检查，不会误用 17+ API。
 
 ```bash
 # 用 Xcode 打开
@@ -61,7 +61,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 ```bash
 ./Tools/package_ipa.sh
-# → dist/HanziKid-unsigned.ipa（约 4.4 MB，Payload/HanziKid.app，arm64，iPad only，最低 iOS 17）
+# → dist/HanziKid-unsigned.ipa（约 4.5 MB，Payload/HanziKid.app，arm64，iPad only，最低 iOS 16.0）
 ```
 
 产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
@@ -71,9 +71,10 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | Bundle ID | `com.tangfengjing.hanzikid` |
 | 版本 | 0.1（Build 1） |
 | 架构 | arm64（真机） |
-| 最低系统 | iOS 17.0 |
+| 最低系统 | iOS 16.0（16.3 可直接重签安装） |
 | 设备族 | 仅 iPad（UIDeviceFamily = 2） |
 | 签名 | 完全没有签名（`code object is not signed at all`） |
+| 强依赖框架 | Foundation / UIKit / SwiftUI / Vision / AVFAudio / Combine（iOS 16 全都有；Spatial 等新库是弱链接，缺失不影响启动） |
 | 大小 | 约 4.5 MB（12.5 MB 解包，主要是 3500 字的笔顺数据） |
 
 **无签名 IPA 不能直接装进 iPad**，需要先用你自己的 Apple ID 重签一次：
@@ -104,7 +105,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --dem
 
 ```
 HanziKid/
-├─ App/            HanziKidApp.swift（App 入口 + ModelContainer + 播种）、RootView
+├─ App/            HanziKidApp.swift（App 入口，注入 AppStore）、RootView
 ├─ Domain/         Models.swift（SwiftData 模型）、Scheduler.swift（SM-2 纯逻辑）、StudySession.swift（排程 + 会话）
 ├─ Services/       BaseLibrary（字库播种）、StrokeLibrary（SVG 笔顺解析）、SpeechService（离线 TTS）、
 │                  OCRService（Vision 中文识别）、CardImporter（字卡入库）
@@ -164,14 +165,24 @@ python3 Tools/build_base_library.py --limit 3500 --force   # 强制重新下载�
 ## 测试
 
 ```bash
-./Tools/check_logic.sh       # 39 项逻辑断言（调度器 / 每日上限 / 排程 / 双档案隔离 / 抽字 / 入库）
+./Tools/check_logic.sh       # 42 项逻辑断言（调度器 / 每日上限 / 排程 / 双档案隔离 / 抽字 / 入库）
+./Tools/package_ipa.sh       # 打无签名 IPA
 # 或在 Xcode 里 ⌘U 跑 HanziKidTests（同一批用例的 XCTest 版本）
 ```
+
+## 数据存在哪
+
+- 学习状态 / 字表 / 孩子档案 / 复习日志：`<App 沙盒>/Library/Application Support/HanziKid/state.json`（单个 JSON，原子写入，改动合并后 0.4 秒落盘）
+- 内置 3500 字字卡与笔顺：只读，随 App 打包，不写盘
+- 卸载 App 会连数据一起删掉；想备份就把上面那个 `state.json` 拷出来
+
+数据层没有用 Core Data / SwiftData（SwiftData 需要 iOS 17）：模型是 `Codable` 值类型 + 内存索引，所以能在 iOS 16 跑，也能直接在 macOS 上跑单元测试。
 
 ## 已知限制
 
 - **释义是从字典正文启发式抽取的**：会过滤古文引证，宁可空着（约 1% 无释义），但仍有个别字抽到偏书面/本源义的解释（如「课 → 考核」）。**成语、例句、近反义词还没有**——这块是下一步的内容增强（预生成 + 家长校对）才做得对
 - **相机**这一条没法在模拟器上真点（模拟器没有相机硬件）；相册选择器、OCR、勾选、入库、待补全卡都在模拟器上跑过并截了图（见 `docs/screenshots/06~09`），真机上第一次点相机时留意一下权限弹窗即可
 - 学习页只在 iPad 竖屏验证过，横屏是自适应布局但未逐项验收
+- 本机只有 iOS 26.5 模拟器，**没有 iOS 16 运行时可以实跑**；16.3 兼容性是靠「部署目标 16.0 + 编译期可用性检查 + 强依赖框架清单核对」保证的，真机首次启动请留意是否有异常
 - 家长锁（算术门）还没做，目前家长区无保护
 - 发音用系统中文 TTS，音色取决于设备是否下载了「增强/高级」语音

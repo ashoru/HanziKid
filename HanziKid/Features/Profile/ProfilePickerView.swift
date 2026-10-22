@@ -1,12 +1,11 @@
 import SwiftUI
-import SwiftData
 
 /// 谁在学？（两个孩子各自的档案）
 struct ProfilePickerView: View {
     let profiles: [Profile]
     var onSelect: (Profile) -> Void
 
-    @Query private var allStates: [SRSState]
+    @EnvironmentObject private var store: AppStore
 
     var body: some View {
         VStack(spacing: 28) {
@@ -33,7 +32,7 @@ struct ProfilePickerView: View {
     }
 
     private func profileCard(_ profile: Profile) -> some View {
-        let states = allStates.filter { $0.profileID == profile.id }
+        let states = store.states(for: profile.id)
         let mastered = states.filter { $0.cardState == .mastered }.count
         let learning = states.filter { $0.cardState == .review || $0.cardState == .learning }.count
 

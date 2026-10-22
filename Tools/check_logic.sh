@@ -14,7 +14,8 @@ xcrun swiftc \
   -module-cache-path .build/mcache \
   HanziKid/Domain/Models.swift \
   HanziKid/Domain/HanziText.swift \
-  HanziKid/Services/CardImporter.swift \
+  HanziKid/Services/AppStore.swift \
+  HanziKid/Services/BaseLibrary.swift \
   HanziKid/Services/StrokeLibrary.swift \
   HanziKid/Domain/Scheduler.swift \
   HanziKid/Domain/StudySession.swift \

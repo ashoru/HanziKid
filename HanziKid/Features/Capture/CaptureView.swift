@@ -1,15 +1,12 @@
 import SwiftUI
-import SwiftData
 import UIKit
 
 /// 拍照 / 粘贴 → 识别汉字 → 勾选 → 加入字表
 struct CaptureView: View {
     let profile: Profile
 
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Query private var decks: [Deck]
-    @Query private var allCards: [CharacterCard]
+    @EnvironmentObject private var store: AppStore
 
     private enum Stage {
         case input       // 选图 / 粘贴
@@ -38,17 +35,12 @@ struct CaptureView: View {
     @State private var addedCount = 0
     @State private var addedDeckName = ""
 
-    private var cardsByHanzi: [String: CharacterCard] {
-        Dictionary(allCards.map { ($0.hanzi, $0) }, uniquingKeysWith: { a, _ in a })
-    }
+    private var cardsByHanzi: [String: CharacterCard] { store.cardIndex() }
 
-    private var myDecks: [Deck] {
-        let matched = decks.filter { $0.level == profile.level }
-        return matched.isEmpty ? decks : matched
-    }
+    private var myDecks: [Deck] { store.decks(for: profile.level) }
 
     private var targetDeck: Deck? {
-        myDecks.first { $0.name == targetDeckName } ?? myDecks.first
+        store.deck(named: targetDeckName) ?? myDecks.first
     }
 
     private var selectedHanzi: [String] {
@@ -442,35 +434,25 @@ struct CaptureView: View {
     private func confirm() {
         let chosen = selectedHanzi
         guard !chosen.isEmpty else { return }
-        let cards = cardsByHanzi
 
         if creatingDeck {
             let name = newDeckName.isEmpty
                 ? "新字表 · \(Profile.dayKey(for: Date()))"
                 : newDeckName
-            let deck = CardImporter.createDeck(named: name,
-                                               level: profile.level,
-                                               hanziList: chosen,
-                                               existing: cards,
-                                               context: context)
-            profile.activeDeckName = deck.name
+            let deck = store.createDeck(named: name, level: profile.level, hanziList: chosen)
+            store.updateProfile(profile.id) { $0.activeDeckName = deck.name }
             addedDeckName = deck.name
             addedCount = chosen.count
         } else if let deck = targetDeck {
-            addedCount = CardImporter.add(chosen, to: deck, existing: cards, context: context)
+            addedCount = store.add(chosen, toDeck: deck.name)
             addedDeckName = deck.name
         } else {
-            let name = "我的字表"
-            let deck = CardImporter.createDeck(named: name,
-                                               level: profile.level,
-                                               hanziList: chosen,
-                                               existing: cards,
-                                               context: context)
-            profile.activeDeckName = deck.name
-            addedDeckName = name
+            let deck = store.createDeck(named: "我的字表", level: profile.level, hanziList: chosen)
+            store.updateProfile(profile.id) { $0.activeDeckName = deck.name }
+            addedDeckName = deck.name
             addedCount = chosen.count
         }
-        try? context.save()
+        store.saveNow()
         stage = .finished
     }
 

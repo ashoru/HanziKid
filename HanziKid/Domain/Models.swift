@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 // MARK: - 学段
 
@@ -24,7 +23,6 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// 每日新字默认值（家长可改）
     var defaultNewPerDay: Int {
         switch self {
         case .preschool: return 3
@@ -32,7 +30,6 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// 每日复习上限默认值（家长可改）
     var defaultReviewCap: Int {
         switch self {
         case .preschool: return 12
@@ -40,7 +37,6 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// 学习页最多展示几个组词
     var visibleWordCount: Int {
         switch self {
         case .preschool: return 3
@@ -48,10 +44,8 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// 是否展示释义
     var showsMeaning: Bool { true }
 
-    /// 默认语速（AVSpeechUtterance 0…1）
     var defaultSpeechRate: Double {
         switch self {
         case .preschool: return 0.38
@@ -62,8 +56,7 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
 
 // MARK: - 学习者档案
 
-@Model
-final class Profile {
+struct Profile: Identifiable, Codable, Equatable {
     var id: UUID
     var name: String
     var levelRaw: Int
@@ -105,29 +98,24 @@ final class Profile {
         set { levelRaw = newValue.rawValue }
     }
 
-    // MARK: 当日有效上限（含临时加量）
-
     static func dayKey(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "zh_CN")
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "zh_CN")
+        return formatter.string(from: date)
     }
 
-    /// 今天实际要学的新字数
     func effectiveNewLimit(on date: Date = Date()) -> Int {
         let bonus = bonusDateKey == Self.dayKey(for: date) ? bonusNew : 0
         return max(0, newPerDay + bonus)
     }
 
-    /// 今天实际要复习的字数上限
     func effectiveReviewLimit(on date: Date = Date()) -> Int {
         let bonus = bonusDateKey == Self.dayKey(for: date) ? bonusReview : 0
         return max(0, reviewCap + bonus)
     }
 
-    /// "今天多学几个"
-    func addBonus(new: Int = 0, review: Int = 0, on date: Date = Date()) {
+    mutating func addBonus(new: Int = 0, review: Int = 0, on date: Date = Date()) {
         let key = Self.dayKey(for: date)
         if bonusDateKey != key {
             bonusDateKey = key
@@ -138,17 +126,16 @@ final class Profile {
         bonusReview = max(0, bonusReview + review)
     }
 
-    /// 今日临时加量是否生效（用于 UI 显示"已加 2 个"）
     var hasBonusToday: Bool {
         bonusDateKey == Self.dayKey(for: Date()) && (bonusNew > 0 || bonusReview > 0)
     }
 }
 
-// MARK: - 汉字字卡（全库唯一，两个孩子共享）
+// MARK: - 汉字字卡（全库共享）
 
-@Model
-final class CharacterCard {
-    @Attribute(.unique) var hanzi: String
+struct CharacterCard: Identifiable, Codable, Equatable {
+    var id: String { hanzi }
+    var hanzi: String
     var pinyin: String
     var pinyinAll: [String]
     var radical: String
@@ -157,7 +144,7 @@ final class CharacterCard {
     var words: [String]
     var frequency: Double
     /// 字库外的字（拍照/手动录入的新字）：只有字形和笔顺，内容待补全
-    var needsContent: Bool = false
+    var needsContent: Bool
 
     init(hanzi: String,
          pinyin: String,
@@ -188,9 +175,9 @@ final class CharacterCard {
 
 // MARK: - 字表
 
-@Model
-final class Deck {
-    @Attribute(.unique) var name: String
+struct Deck: Identifiable, Codable, Equatable {
+    var id: String { name }
+    var name: String
     var hanziList: [String]
     var levelRaw: Int
     var createdAt: Date
@@ -210,8 +197,7 @@ final class Deck {
 
 // MARK: - 复习状态（每个字 × 每个孩子一份）
 
-@Model
-final class SRSState {
+struct SRSState: Codable, Equatable {
     var profileID: UUID
     var hanzi: String
     var stateRaw: String
@@ -240,45 +226,31 @@ final class SRSState {
     }
 
     var schedule: Schedule {
-        Schedule(state: cardState,
-                 ease: ease,
-                 intervalDays: intervalDays,
-                 reps: reps,
-                 lapses: lapses,
-                 due: due,
-                 lastReviewedAt: lastReviewedAt)
-    }
-
-    func apply(_ s: Schedule) {
-        stateRaw = s.state.rawValue
-        ease = s.ease
-        intervalDays = s.intervalDays
-        reps = s.reps
-        lapses = s.lapses
-        due = s.due
-        lastReviewedAt = s.lastReviewedAt
-    }
-
-    static func find(profileID: UUID, hanzi: String, in context: ModelContext) -> SRSState? {
-        let pid = profileID
-        let hz = hanzi
-        let predicate = #Predicate<SRSState> { $0.profileID == pid && $0.hanzi == hz }
-        var descriptor = FetchDescriptor<SRSState>(predicate: predicate)
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
-    static func all(profileID: UUID, in context: ModelContext) -> [SRSState] {
-        let pid = profileID
-        let predicate = #Predicate<SRSState> { $0.profileID == pid }
-        return (try? context.fetch(FetchDescriptor<SRSState>(predicate: predicate))) ?? []
+        get {
+            Schedule(state: cardState,
+                     ease: ease,
+                     intervalDays: intervalDays,
+                     reps: reps,
+                     lapses: lapses,
+                     due: due,
+                     lastReviewedAt: lastReviewedAt)
+        }
+        set {
+            stateRaw = newValue.state.rawValue
+            ease = newValue.ease
+            intervalDays = newValue.intervalDays
+            reps = newValue.reps
+            lapses = newValue.lapses
+            due = newValue.due
+            lastReviewedAt = newValue.lastReviewedAt
+        }
     }
 }
 
-// MARK: - 学习记录（只追加，用于统计与日后换算法）
+// MARK: - 学习记录（只追加）
 
-@Model
-final class ReviewLog {
+struct ReviewLog: Identifiable, Codable, Equatable {
+    var id: UUID
     var profileID: UUID
     var hanzi: String
     var gradeRaw: Int
@@ -286,6 +258,7 @@ final class ReviewLog {
     var sessionID: UUID
 
     init(profileID: UUID, hanzi: String, grade: ReviewGrade, reviewedAt: Date = Date(), sessionID: UUID) {
+        self.id = UUID()
         self.profileID = profileID
         self.hanzi = hanzi
         self.gradeRaw = grade.rawValue

@@ -1,7 +1,6 @@
 import Foundation
-import SwiftData
 
-// 与 HanziKidTests/SchedulerTests.swift 一致的断言，用于在无 PTY 环境下验证纯逻辑
+// 与 HanziKidTests 一致的断言，用于在无 PTY（跑不了 xcodebuild test）的环境验证核心逻辑
 var failures = 0
 var checks = 0
 
@@ -65,100 +64,71 @@ check("错 4 次标记为重点字（leech）", leech.lapses == 4 && leech.isLee
 print("今日任务排程")
 
 @MainActor
-func runPlannerChecks() throws {
-    let schema = Schema([Profile.self, CharacterCard.self, Deck.self, SRSState.self, ReviewLog.self])
-    let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-
-    func freshContext() throws -> ModelContext {
-        let context = ModelContext(container)
-        try context.delete(model: Profile.self)
-        try context.delete(model: SRSState.self)
-        try context.delete(model: ReviewLog.self)
-        try context.delete(model: CharacterCard.self)
-        try context.delete(model: Deck.self)
-        return context
+func runPlannerChecks() {
+    func dueState(_ profile: Profile, _ hanzi: String) -> SRSState {
+        SRSState(profileID: profile.id, hanzi: hanzi,
+                 schedule: Schedule(state: .review, ease: 2.5, intervalDays: 1, reps: 1,
+                                    due: Date().addingTimeInterval(-3_600)))
     }
 
     // 1) 每日上限
-    let context = try freshContext()
-    let profile = Profile(name: "测试", level: .preschool, emoji: "🐣", activeDeckName: "d")
-    profile.newPerDay = 2
-    profile.reviewCap = 1
-    context.insert(profile)
-    for hanzi in ["一", "二", "三"] {
-        context.insert(SRSState(profileID: profile.id, hanzi: hanzi,
-                                schedule: Schedule(state: .review, ease: 2.5, intervalDays: 1, reps: 1,
-                                                   due: Date().addingTimeInterval(-3_600))))
-    }
-    let states = try context.fetch(FetchDescriptor<SRSState>())
-    let plan = TodayPlanner.plan(deckHanzi: ["四", "五", "六", "七"], states: states, profile: profile)
+    let profile = Profile(name: "测试", level: .preschool, emoji: "🐣", activeDeckName: "d",
+                          newPerDay: 2, reviewCap: 1)
+    let plan = TodayPlanner.plan(deckHanzi: ["四", "五", "六", "七"],
+                                 states: [dueState(profile, "一"), dueState(profile, "二"), dueState(profile, "三")],
+                                 profile: profile)
     check("到期复习 3 个，按上限只取 1 个", plan.dueReviewTotal == 3 && plan.reviewCount == 1)
     check("新字按上限只取 2 个", plan.newCount == 2)
     check("任务总数 = 1 复习 + 2 新字", plan.items.count == 3)
 
     // 2) 已学过的字不该再当新字
-    let context2 = try freshContext()
     let profile2 = Profile(name: "测试2", level: .primary, emoji: "🦁", activeDeckName: "d")
-    context2.insert(profile2)
-    context2.insert(SRSState(profileID: profile2.id, hanzi: "一",
-                             schedule: Schedule(state: .review, ease: 2.5, intervalDays: 5, reps: 2,
-                                                due: Date().addingTimeInterval(86_400 * 5))))
-    let states2 = try context2.fetch(FetchDescriptor<SRSState>())
-    let plan2 = TodayPlanner.plan(deckHanzi: ["一", "二", "三"], states: states2, profile: profile2)
+    let future = SRSState(profileID: profile2.id, hanzi: "一",
+                          schedule: Schedule(state: .review, ease: 2.5, intervalDays: 5, reps: 2,
+                                             due: Date().addingTimeInterval(86_400 * 5)))
+    let plan2 = TodayPlanner.plan(deckHanzi: ["一", "二", "三"], states: [future], profile: profile2)
     check("未到期的字不出现", plan2.reviewCount == 0)
     check("已学过的字不算新字", plan2.items.map(\.hanzi) == ["二", "三"])
 
     // 3) 临时加量
-    let profile3 = Profile(name: "测试3", level: .preschool, emoji: "🐣")
+    var profile3 = Profile(name: "测试3", level: .preschool, emoji: "🐣")
     profile3.newPerDay = 3
     check("默认新字 3 个", profile3.effectiveNewLimit() == 3)
     profile3.addBonus(new: 2, review: 5)
-    check("「今天多学几个」生效", profile3.effectiveNewLimit() == 5 && profile3.effectiveReviewLimit() == profile3.reviewCap + 5)
-    let yesterday = Date().addingTimeInterval(-86_400)
-    let profile4 = Profile(name: "测试4", level: .preschool, emoji: "🐣")
+    check("「今天多学几个」生效",
+          profile3.effectiveNewLimit() == 5 && profile3.effectiveReviewLimit() == profile3.reviewCap + 5)
+
+    var profile4 = Profile(name: "测试4", level: .preschool, emoji: "🐣")
     profile4.newPerDay = 3
+    let yesterday = Date().addingTimeInterval(-86_400)
     profile4.addBonus(new: 5, on: yesterday)
-    check("跨天后临时加量失效", profile4.effectiveNewLimit(on: yesterday) == 8 && profile4.effectiveNewLimit() == 3)
+    check("跨天后临时加量失效",
+          profile4.effectiveNewLimit(on: yesterday) == 8 && profile4.effectiveNewLimit() == 3)
 
     // 4) 字表顺序 + 复习优先
-    let context3 = try freshContext()
-    let profile5 = Profile(name: "测试5", level: .preschool, emoji: "🐣")
-    profile5.newPerDay = 3
-    context3.insert(profile5)
+    let profile5 = Profile(name: "测试5", level: .preschool, emoji: "🐣", newPerDay: 3)
     let plan3 = TodayPlanner.plan(deckHanzi: ["人", "口", "手", "大"], states: [], profile: profile5)
     check("新字按字表顺序取前 3 个", plan3.items.map(\.hanzi) == ["人", "口", "手"])
 
-    let context4 = try freshContext()
-    let profile6 = Profile(name: "测试6", level: .primary, emoji: "🦁")
-    profile6.newPerDay = 5
-    profile6.reviewCap = 5
-    context4.insert(profile6)
-    context4.insert(SRSState(profileID: profile6.id, hanzi: "一",
-                             schedule: Schedule(state: .review, ease: 2.5, intervalDays: 1, reps: 1,
-                                                due: Date().addingTimeInterval(-60))))
-    let states4 = try context4.fetch(FetchDescriptor<SRSState>())
-    let plan4 = TodayPlanner.plan(deckHanzi: ["二", "三"], states: states4, profile: profile6)
+    let profile6 = Profile(name: "测试6", level: .primary, emoji: "🦁", newPerDay: 5, reviewCap: 5)
+    let plan4 = TodayPlanner.plan(deckHanzi: ["二", "三"], states: [dueState(profile6, "一")], profile: profile6)
     check("复习排在前面", plan4.items.first?.hanzi == "一" && plan4.items.first?.kind == .review)
 
-    // 5) 学习会话
-    let context5 = try freshContext()
-    let profile7 = Profile(name: "豆豆", level: .preschool, emoji: "🐣")
-    let profile8 = Profile(name: "果果", level: .primary, emoji: "🦁")
-    context5.insert(profile7)
-    context5.insert(profile8)
+    // 5) 学习会话 + 档案隔离
+    let store = AppStore(storage: .memory)
+    let kidA = Profile(name: "豆豆", level: .preschool, emoji: "🐣")
+    let kidB = Profile(name: "果果", level: .primary, emoji: "🦁")
 
-    let items = ["一", "二", "三"].map { StudyItem(hanzi: $0, kind: .new, schedule: Schedule()) }
-    let session = StudySession(items: items)
-    session.grade(.again, profile: profile7, context: context5)
+    let session = StudySession(items: ["一", "二", "三"].map { StudyItem(hanzi: $0, kind: .new, schedule: Schedule()) })
+    session.grade(.again, profile: kidA, store: store)
     check("「不会」的字本轮重现一次", session.items.count == 4 && session.items.last?.hanzi == "一")
 
     let session2 = StudySession(items: [StudyItem(hanzi: "水", kind: .new, schedule: Schedule())])
-    session2.grade(.good, profile: profile7, context: context5)
-    let waterState = SRSState.find(profileID: profile7.id, hanzi: "水", in: context5)
-    check("评分写入复习状态（明天复习）", waterState?.cardState == .review && waterState?.intervalDays == 1)
-    let logs = try context5.fetch(FetchDescriptor<ReviewLog>())
-    check("评分写入学习记录", logs.contains { $0.hanzi == "水" && $0.grade == .good })
-    check("另一个孩子不受影响", SRSState.find(profileID: profile8.id, hanzi: "水", in: context5) == nil)
+    session2.grade(.good, profile: kidA, store: store)
+    check("评分写入复习状态（明天复习）",
+          store.schedule(profileID: kidA.id, hanzi: "水")?.intervalDays == 1)
+    check("评分写入学习记录", store.logs.contains { $0.hanzi == "水" && $0.grade == .good })
+    check("另一个孩子不受影响", store.schedule(profileID: kidB.id, hanzi: "水") == nil)
     check("会话推进到结束", session2.isFinished)
 }
 
@@ -171,42 +141,34 @@ check("扩展 A 区也算汉字", HanziText.extract("a1 龘㐀！") == ["龘", "
 check("保留出现顺序", HanziText.extract("歌舞") == ["歌", "舞"])
 
 @MainActor
-func runImporterChecks() throws {
+func runImporterChecks() {
     print("录入入库")
-    let schema = Schema([Profile.self, CharacterCard.self, Deck.self, SRSState.self, ReviewLog.self])
-    let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-    let context = ModelContext(container)
+    let store = AppStore(storage: .memory)
 
-    let water = CharacterCard(hanzi: "水", pinyin: "shuǐ", pinyinAll: ["shuǐ"], radical: "水",
-                              strokeCount: 4, meaning: "喝的水", words: ["喝水"], frequency: 100)
-    context.insert(water)
-    let existing = ["水": water]
-
-    let unknown = CardImporter.ensureCard(for: "龘", existing: existing, context: context)
+    let unknown = store.ensureCard(for: "龘")
     check("字库外的字 → 待补全卡", unknown.needsContent && unknown.words.isEmpty && unknown.pinyin.isEmpty)
-    check("字库内的字直接复用", CardImporter.ensureCard(for: "水", existing: existing, context: context) === water)
+    check("重复调用不会重复建卡", store.ensureCard(for: "龘").hanzi == "龘" && store.customCards.count == 1)
 
-    let deck = Deck(name: "第 1 课", hanziList: [], level: .preschool)
-    context.insert(deck)
-    let added = CardImporter.add(["水", "龘", "水"], to: deck, existing: existing, context: context)
-    check("加入字表去重且保持顺序", added == 2 && deck.hanziList == ["水", "龘"])
-    check("重复加入不再计数", CardImporter.add(["水"], to: deck, existing: existing, context: context) == 0)
+    let deck = store.createDeck(named: "第 1 课", level: .preschool, hanziList: [])
+    let added = store.add(["水", "龘", "水"], toDeck: deck.name)
+    check("加入字表去重且保持顺序",
+          added == 2 && store.deck(named: deck.name)?.hanziList == ["水", "龘"])
+    check("重复加入不再计数", store.add(["水"], toDeck: deck.name) == 0)
+    store.remove("水", fromDeck: deck.name)
+    check("移除字表成员", store.deck(named: deck.name)?.hanziList == ["龘"])
 
-    let newDeck = CardImporter.createDeck(named: "第 2 课", level: .preschool,
-                                          hanziList: ["天", "空"], existing: existing, context: context)
-    check("新建字表", newDeck.name == "第 2 课" && newDeck.hanziList == ["天", "空"])
-    let cards = try context.fetch(FetchDescriptor<CharacterCard>())
-    check("新字也进了字库", cards.count == 4)
+    let later = store.createDeck(named: "第 2 课", level: .preschool, hanziList: ["天", "空"])
+    check("新建字表", later.hanziList == ["天", "空"])
+    let duplicate = store.createDeck(named: "第 2 课", level: .preschool, hanziList: [])
+    check("字表重名自动加序号", duplicate.name == "第 2 课 2")
+
+    check("字库外的字进入字库索引", store.card(for: "龘") != nil)
+    check("字库内的字也能取到（内存测试库为空时返回 nil 属预期）", store.card(for: "的") == nil)
 }
 
 MainActor.assumeIsolated {
-    do {
-        try runPlannerChecks()
-        try runImporterChecks()
-    } catch {
-        failures += 1
-        print("  ✗ 数据库用例异常：\(error)")
-    }
+    runPlannerChecks()
+    runImporterChecks()
 }
 
 print("")

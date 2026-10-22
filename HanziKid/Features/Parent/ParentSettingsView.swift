@@ -1,12 +1,12 @@
 import SwiftUI
-import SwiftData
 
 /// 家长设置：每日学习量、语速、字表、重置进度
 struct ParentSettingsView: View {
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Profile.createdAt) private var profiles: [Profile]
-    @Query(sort: \Deck.createdAt) private var decks: [Deck]
+    @EnvironmentObject private var store: AppStore
+
+    private var profiles: [Profile] { store.profiles }
+    private var decks: [Deck] { store.decks }
 
     @State private var resetTarget: Profile?
 
@@ -26,7 +26,7 @@ struct ParentSettingsView: View {
                             Spacer()
                             TextField("名字", text: Binding(
                                 get: { profile.name },
-                                set: { profile.name = $0; save() }
+                                set: { newValue in store.updateProfile(profile.id) { $0.name = newValue } }
                             ))
                             .multilineTextAlignment(.trailing)
                             .frame(maxWidth: 180)
@@ -35,9 +35,10 @@ struct ParentSettingsView: View {
                         Picker("学段", selection: Binding(
                             get: { profile.level },
                             set: { newValue in
-                                profile.level = newValue
-                                profile.speechRate = newValue.defaultSpeechRate
-                                save()
+                                store.updateProfile(profile.id) {
+                                    $0.level = newValue
+                                    $0.speechRate = newValue.defaultSpeechRate
+                                }
                             }
                         )) {
                             ForEach(LearnerLevel.allCases) { level in
@@ -47,7 +48,7 @@ struct ParentSettingsView: View {
 
                         Stepper(value: Binding(
                             get: { profile.newPerDay },
-                            set: { profile.newPerDay = $0; save() }
+                            set: { newValue in store.updateProfile(profile.id) { $0.newPerDay = newValue } }
                         ), in: 0...30) {
                             HStack {
                                 Text("每天新字")
@@ -60,7 +61,7 @@ struct ParentSettingsView: View {
 
                         Stepper(value: Binding(
                             get: { profile.reviewCap },
-                            set: { profile.reviewCap = $0; save() }
+                            set: { newValue in store.updateProfile(profile.id) { $0.reviewCap = newValue } }
                         ), in: 0...60) {
                             HStack {
                                 Text("每天复习上限")
@@ -77,13 +78,13 @@ struct ParentSettingsView: View {
                                 .foregroundStyle(Theme.inkSoft)
                             Slider(value: Binding(
                                 get: { profile.speechRate },
-                                set: { profile.speechRate = $0; save() }
+                                set: { newValue in store.updateProfile(profile.id) { $0.speechRate = newValue } }
                             ), in: 0.25...0.6)
                         }
 
                         Picker("当前字表", selection: Binding(
                             get: { profile.activeDeckName },
-                            set: { profile.activeDeckName = $0; save() }
+                            set: { newValue in store.updateProfile(profile.id) { $0.activeDeckName = newValue } }
                         )) {
                             ForEach(decks) { deck in
                                 Text("\(deck.name)（\(deck.hanziList.count) 字）").tag(deck.name)
@@ -117,7 +118,7 @@ struct ParentSettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { save(); dismiss() }
+                    Button("完成") { store.saveNow(); dismiss() }
                 }
             }
             .alert("确定清空进度？", isPresented: Binding(
@@ -135,20 +136,8 @@ struct ParentSettingsView: View {
         }
     }
 
-    private func save() {
-        try? context.save()
-    }
-
     private func reset(_ profile: Profile) {
-        let pid = profile.id
-        let predicate = #Predicate<SRSState> { $0.profileID == pid }
-        if let states = try? context.fetch(FetchDescriptor<SRSState>(predicate: predicate)) {
-            states.forEach { context.delete($0) }
-        }
-        let logPredicate = #Predicate<ReviewLog> { $0.profileID == pid }
-        if let logs = try? context.fetch(FetchDescriptor<ReviewLog>(predicate: logPredicate)) {
-            logs.forEach { context.delete($0) }
-        }
-        save()
+        store.resetProgress(profileID: profile.id)
+        store.saveNow()
     }
 }

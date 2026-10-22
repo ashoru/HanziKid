@@ -1,23 +1,21 @@
 import SwiftUI
-import SwiftData
 
 /// 一页一字（核心学习页）
 struct StudyView: View {
     let profile: Profile
-    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Query private var allCards: [CharacterCard]
+    @EnvironmentObject private var store: AppStore
 
-    @State private var session: StudySession
+    @StateObject private var session: StudySession
     @State private var boardToken = 0
 
     init(profile: Profile, items: [StudyItem]) {
         self.profile = profile
-        _session = State(initialValue: StudySession(items: items))
+        _session = StateObject(wrappedValue: StudySession(items: items))
     }
 
-    private var cardsByHanzi: [String: CharacterCard] {
-        Dictionary(allCards.map { ($0.hanzi, $0) }, uniquingKeysWith: { a, _ in a })
+    private func lookupCard(_ hanzi: String) -> CharacterCard? {
+        store.card(for: hanzi)
     }
 
     var body: some View {
@@ -28,11 +26,11 @@ struct StudyView: View {
                 topBar
                 if session.isFinished {
                     finishedView
-                } else if let item = session.current, cardsByHanzi[item.hanzi] == nil {
+                } else if let item = session.current, lookupCard(item.hanzi) == nil {
                     // 字库还在加载（首次启动 / 导入新内容时）
                     ProgressView("正在准备字卡…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let item = session.current, let card = cardsByHanzi[item.hanzi] {
+                } else if let item = session.current, let card = lookupCard(item.hanzi) {
                     GeometryReader { geo in
                         // 横屏（宽 > 1000pt）左右分栏；竖屏上下排布
                         let isWide = geo.size.width > 1000
@@ -252,7 +250,7 @@ struct StudyView: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        session.grade(grade, profile: profile, context: context)
+                        session.grade(grade, profile: profile, store: store)
                     }
                 } label: {
                     VStack(spacing: 4) {

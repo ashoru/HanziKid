@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 // MARK: - 学习队列里的一个字
 
@@ -97,13 +96,12 @@ enum TodayPlanner {
 // MARK: - 一次学习会话
 
 @MainActor
-@Observable
-final class StudySession {
-    private(set) var items: [StudyItem]
-    private(set) var index: Int = 0
-    private(set) var remembered: Int = 0
-    private(set) var struggled: Int = 0
-    private(set) var newLearned: Int = 0
+final class StudySession: ObservableObject {
+    @Published private(set) var items: [StudyItem]
+    @Published private(set) var index: Int = 0
+    @Published private(set) var remembered: Int = 0
+    @Published private(set) var struggled: Int = 0
+    @Published private(set) var newLearned: Int = 0
 
     let sessionID = UUID()
     let startedAt = Date()
@@ -122,24 +120,17 @@ final class StudySession {
     /// 记录一次评分并推进；"不会"的字会在本轮稍后再出现一次
     func grade(_ grade: ReviewGrade,
                profile: Profile,
-               context: ModelContext,
+               store: AppStore,
                scheduler: Scheduler = Scheduler()) {
         guard let item = current else { return }
 
-        let state: SRSState
-        if let existing = SRSState.find(profileID: profile.id, hanzi: item.hanzi, in: context) {
-            state = existing
-        } else {
-            state = SRSState(profileID: profile.id, hanzi: item.hanzi)
-            context.insert(state)
-        }
-
-        let next = scheduler.next(state.schedule, grade: grade)
-        state.apply(next)
-        context.insert(ReviewLog(profileID: profile.id,
-                                 hanzi: item.hanzi,
-                                 grade: grade,
-                                 sessionID: sessionID))
+        let currentSchedule = store.schedule(profileID: profile.id, hanzi: item.hanzi) ?? Schedule()
+        let next = scheduler.next(currentSchedule, grade: grade)
+        store.applySchedule(profileID: profile.id, hanzi: item.hanzi, schedule: next)
+        store.addLog(ReviewLog(profileID: profile.id,
+                               hanzi: item.hanzi,
+                               grade: grade,
+                               sessionID: sessionID))
 
         switch grade {
         case .good: remembered += 1
@@ -155,6 +146,5 @@ final class StudySession {
         }
 
         index += 1
-        try? context.save()
     }
 }
