@@ -63,11 +63,26 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 > 1. Xcode 的宏插件子进程要自己再套一层 `sandbox-exec`，被当前沙箱禁止 → 需要 `OTHER_SWIFT_FLAGS="-disable-sandbox"`，否则 `@Model` 全部编译失败。
 > 2. 环境里没有 PTY，`xcodebuild test` 起不了测试宿主 → 用 `./Tools/check_logic.sh` 在 macOS 上跑同一套逻辑断言；在正常机器上仍然可以直接 ⌘U 跑 `HanziKidTests`。
 
+## 版本号与更新日志
+
+- 版本号：`主版本.次版本.修订号`（`MARKETING_VERSION`），build 号：`CFBundleVersion`
+- **每次打包前先升版本**，改了什么写进 [`CHANGELOG.md`](CHANGELOG.md)：
+
+```bash
+./Tools/bump_version.sh minor   # 加功能：0.4.0 → 0.5.0，build +1（并在 CHANGELOG 顶部插一条待填）
+./Tools/bump_version.sh patch   # 修 bug ：0.4.0 → 0.4.1，build +1
+./Tools/bump_version.sh build   # 只加 build（内部测试包）
+./Tools/package_ipa.sh          # 包名自动带版本：HanziKid-0.5.0(5)-unsigned.ipa
+```
+
+- App 里也能核对：家长设置页最下面「关于 → 版本」显示 `0.4.0（build 4）`
+- 当前版本见 `CHANGELOG.md` 顶部
+
 ## 打包成无签名 IPA
 
 ```bash
 ./Tools/package_ipa.sh
-# → dist/HanziKid-unsigned.ipa（约 61 MB，含全部预生成发音；arm64，iPad only，最低 iOS 16.0）
+# → dist/HanziKid-<版本>(<build>)-unsigned.ipa（约 61 MB，含全部预生成发音；arm64，iPad only，最低 iOS 16.0）
 ```
 
 产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
@@ -75,7 +90,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | 项 | 值 |
 |---|---|
 | Bundle ID | `com.tangfengjing.hanzikid` |
-| 版本 | 0.1（Build 1） |
+| 版本 | 0.4.0（build 4） |
 | 架构 | arm64（真机） |
 | 最低系统 | iOS 16.0（16.3 可直接重签安装） |
 | 设备族 | 仅 iPad（UIDeviceFamily = 2） |

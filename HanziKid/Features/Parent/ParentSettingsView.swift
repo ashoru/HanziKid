@@ -158,10 +158,12 @@ struct ParentSettingsView: View {
                 }
 
                 Section("关于") {
-                    LabeledContent("字库规模", value: "800 字（可继续扩充）")
+                    LabeledContent("版本", value: AppInfo.versionText)
+                    LabeledContent("字库规模", value: "\(store.library.count) 字")
                     LabeledContent("笔顺数据", value: "Make Me a Hanzi")
                     LabeledContent("拼音 / 部首 / 释义", value: "开源字库（新华字典数据）")
-                    LabeledContent("发音", value: "系统离线中文语音")
+                    LabeledContent("发音", value: "预生成离线音频（百度 TTS）")
+                    LabeledContent("教材", value: "部编版一年级上 / 下册生字表")
                     Text("内容来源均为开源数据，仅供家庭学习使用。组词与释义后续会接入更严谨的校对流程。")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.inkFaint)

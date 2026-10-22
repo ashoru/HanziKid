@@ -7,7 +7,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-NAME="HanziKid-unsigned"
 DIST="dist"
 APP=".build/Build/Products/Release-iphoneos/HanziKid.app"
 
@@ -28,15 +27,22 @@ xcodebuild build \
 
 test -d "$APP" || { echo "❌ 没找到 $APP"; exit 1; }
 
+VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
+BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
+NAME="HanziKid-${VERSION}(${BUILD})-unsigned"
+echo "   版本 $VERSION (build $BUILD)"
+
 echo "== 2/3 打包 Payload"
 rm -rf .build/ipa
 mkdir -p .build/ipa/Payload "$DIST"
 cp -R "$APP" .build/ipa/Payload/
 ( cd .build/ipa && zip -qry "../../$DIST/$NAME.ipa" Payload )
 
-echo "== 3/3 校验"
+echo "== 3/3 校验（版本 ${VERSION}，build ${BUILD}）"
 unzip -l "$DIST/$NAME.ipa" | tail -3
 file "$APP/HanziKid" | sed 's/^/  /'
 codesign -dv "$APP" 2>&1 | head -1 | sed 's/^/  /' || true
 ls -lh "$DIST/$NAME.ipa"
+echo "   安装包：$DIST/$NAME.ipa"
+echo "   记得在 CHANGELOG.md 里补上 $VERSION 的改动"
 shasum -a 256 "$DIST/$NAME.ipa"
