@@ -91,6 +91,8 @@ struct Profile: Identifiable, Codable, Equatable {
     var voiceGenderRaw: String?
     /// 每个字读几遍
     var repeatCountRaw: Int?
+    /// 没有内置音频时，是否联网从百度取发音
+    var onlineAudioRaw: Bool?
 
     init(name: String,
          level: LearnerLevel,
@@ -114,6 +116,7 @@ struct Profile: Identifiable, Codable, Equatable {
         self.pauseSecondsRaw = level == .preschool ? 1.6 : 1.2
         self.voiceGenderRaw = SpeechGender.female.rawValue
         self.repeatCountRaw = 3
+        self.onlineAudioRaw = true
     }
 
     // MARK: 朗读设置
@@ -137,6 +140,12 @@ struct Profile: Identifiable, Codable, Equatable {
     var repeatCount: Int {
         get { repeatCountRaw ?? 3 }
         set { repeatCountRaw = newValue }
+    }
+
+    /// 联网取发音（安装包里不带音频时用）
+    var onlineAudio: Bool {
+        get { onlineAudioRaw ?? true }
+        set { onlineAudioRaw = newValue }
     }
 
     var level: LearnerLevel {

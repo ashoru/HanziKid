@@ -93,6 +93,7 @@ struct StudyView: View {
         let repeatCount = max(1, min(5, profile.repeatCount))
         let pause = UInt64(max(0.2, profile.pauseSeconds) * 1_000_000_000)
 
+        prefetchUpcoming()
         isReading = true
         readTask = Task { @MainActor in
             for _ in 0..<repeatCount {
@@ -109,6 +110,23 @@ struct StudyView: View {
             }
             isReading = false
         }
+    }
+
+    /// 把当前字的组词、以及后面两张卡的音频提前下好（联网时才有意义，命中缓存就是空操作）
+    private func prefetchUpcoming() {
+        guard profile.onlineAudio, !AudioLibrary.shared.hasAudio else { return }
+        var texts: [String] = []
+        if let card = currentCard {
+            texts.append(card.hanzi)
+            texts.append(contentsOf: card.words(for: profile.level).prefix(3))
+        }
+        for item in session.items.dropFirst(session.index + 1).prefix(2) {
+            texts.append(item.hanzi)
+            if let card = lookupCard(item.hanzi) {
+                texts.append(contentsOf: card.words(for: profile.level).prefix(3))
+            }
+        }
+        AudioCache.shared.prefetch(texts)
     }
 
     // MARK: 顶部进度

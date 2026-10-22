@@ -82,7 +82,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 ```bash
 ./Tools/package_ipa.sh
-# → dist/HanziKid-<版本>(<build>)-unsigned.ipa（约 61 MB，含全部预生成发音；arm64，iPad only，最低 iOS 16.0）
+# → dist/HanziKid-<版本>(<build>)-unsigned.ipa（约 4.6 MB，在线发音版；arm64，iPad only，最低 iOS 16.0）
 ```
 
 产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
@@ -96,7 +96,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | 设备族 | 仅 iPad（UIDeviceFamily = 2） |
 | 签名 | 完全没有签名（`code object is not signed at all`） |
 | 强依赖框架 | Foundation / UIKit / SwiftUI / Vision / AVFAudio / Combine（iOS 16 全都有；Spatial 等新库是弱链接，缺失不影响启动） |
-| 大小 | 约 61 MB（104 MB 解包：83 MB 预生成发音 + 9.5 MB 笔顺） |
+| 大小 | 约 4.6 MB（在线发音版）；离线发音版约 61 MB |
 
 **无签名 IPA 不能直接装进 iPad**，需要先用你自己的 Apple ID 重签一次：
 
@@ -108,6 +108,26 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 因为重签会改 Bundle ID（多数工具默认改），App 的数据是按 Bundle ID 存的，**换工具重签后可能看不到之前的进度**，建议固定用同一个工具 + 同一个 Bundle ID。
 
 ## 发音从哪来（重要）
+
+### 默认：在线获取（0.5.0 起）
+
+安装包不再带音频，**运行时按需从百度 TTS 取，落盘缓存**：
+
+- 进入一张字卡 → 自动播报，同时**预取当前字的组词 + 后面两张卡的音频**，切下一张基本无等待
+- 每个字/词只下载一次，存在 `Caches/tts/`，之后完全离线可用（学过的字不耗流量）
+- 断网/超时自动回退系统 TTS，学习流程不中断
+- 家长设置里可关「联网获取发音」、可「清空发音缓存」
+- 安装包 4.6 MB（离线版 61 MB）
+
+> 想做成完全离线版（适合 iPad 不常联网的情况）：
+> ```bash
+> python3 Tools/fetch_audio.py     # 预生成到 Tools/audio/（约 12 分钟）
+> ./Tools/make_offline_audio.sh    # 拷进 App 资源目录
+> ./Tools/package_ipa.sh           # 打出来的包就是离线版
+> ```
+> 离线版优先播包内音频，包内没有的（比如拍照新录入的字）仍然走在线 + 缓存。
+
+### 附：预生成音频的细节（离线版 / 缓存源）
 
 **不用系统 TTS 了**：系统读单个汉字只有 0.5 秒左右，又短又急。现在改成**预生成音频打包进 App**：
 

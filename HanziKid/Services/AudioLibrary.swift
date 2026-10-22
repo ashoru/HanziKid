@@ -41,10 +41,16 @@ final class AudioLibrary: NSObject, AVAudioPlayerDelegate {
         return audio.duration
     }
 
-    /// 播放并等到播完；没有对应音频返回 false（调用方回退系统 TTS）
+    /// 播放内置音频（按字/词查包内文件）
     @discardableResult
     func play(_ text: String) async -> Bool {
         guard let url = url(for: text) else { return false }
+        return await play(fileURL: url)
+    }
+
+    /// 播放指定文件（内置音频和在线缓存文件都走这里）
+    @discardableResult
+    func play(fileURL url: URL) async -> Bool {
         stop()
 
         let audio: AVAudioPlayer

@@ -129,6 +129,22 @@ struct ParentSettingsView: View {
                             }
                         }
 
+                        Toggle(isOn: Binding(
+                            get: { profile.onlineAudio },
+                            set: { newValue in store.updateProfile(profile.id) { $0.onlineAudio = newValue } }
+                        )) {
+                            Text("联网获取发音")
+                        }
+
+                        if profile.onlineAudio {
+                            Button {
+                                AudioCache.shared.clearCache()
+                            } label: {
+                                Text("清空发音缓存（\(AudioCache.shared.cachedCount) 个）")
+                                    .font(.system(size: 15))
+                            }
+                        }
+
                         if !SpeechService.shared.hasVoice(for: .male) {
                             Text("这台设备还没有中文男声。可以在 设置 → 辅助功能 → 朗读内容 → 声音 → 中文 里下载一个男声，返回后这里会自动出现。")
                                 .font(.system(size: 12))

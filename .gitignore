@@ -19,3 +19,6 @@ dist/
 
 # 预生成的发音音频（体积大，用 Tools/fetch_audio.py 重新生成）
 HanziKid/Resources/audio/
+
+# 预生成音频缓存（在线版不打包）
+Tools/audio/

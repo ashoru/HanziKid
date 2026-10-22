@@ -11,6 +11,9 @@
 
 用法：
   python3 Tools/fetch_audio.py                # 全部（已存在则跳过）
+
+产物默认放在 Tools/audio/（不进 git、也不打进 App）；
+想做「完全离线版」再跑 Tools/make_offline_audio.sh 把它们拷进 App 资源目录。
   python3 Tools/fetch_audio.py --only-chars   # 只抓单字
   python3 Tools/fetch_audio.py --limit 20     # 试抓 20 个
 """
@@ -27,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-AUDIO = ROOT / "HanziKid" / "Resources" / "audio"
+AUDIO = ROOT / "Tools" / "audio"
 CACHE = ROOT / "Tools" / "raw" / "tts_cache"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
