@@ -230,8 +230,17 @@ ENUM_MARKS = "⒈⒉⒊⒋⒌⒍⒎⒏⒐⒑①②③④⑤⑥⑦⑧⑨⑩⑴⑵
 LATIN = re.compile(r"[a-zA-Zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü0-9]")
 
 
+# 释义里出现这些词，说明抽到的是古义/引证，不能给孩子看
+SUSPICIOUS = ("同本义", "又如", "另见", "本义", "--", "《", "〈", "〉",
+              "古代", "古时", "旧时", "通菉", "通“", "籀", "假借", "方言")
+
+
 def clean_meaning(ch: str, explanation: str, limit: int = 46) -> str:
-    """把冗长的字典释义压成一句给孩子看的话。"""
+    """把冗长的字典释义压成一句给孩子看的话。
+
+    抽取顺序：「本义」段 → 正文第一条定义；两处都过 SUSPICIOUS 过滤，
+    宁可空着，也不给孩子看古文原句。
+    """
     if ch in PRESCHOOL_CONTENT:
         return PRESCHOOL_CONTENT[ch][0]
     if ch in CURATED_MEANING:
@@ -246,29 +255,41 @@ def clean_meaning(ch: str, explanation: str, limit: int = 46) -> str:
         t = raw.strip()
         t = re.sub(r"^[" + ENUM_MARKS + r"\s\.、]+", "", t)
         t = re.sub(r"[（(][^）)]*[）)]", "", t)
+        # 开头是括号注释（"(象形。从乹…"）：有闭合就取括号后的内容，没闭合就整条丢掉
+        if t[:1] in ("（", "("):
+            if let := re.search(r"[）)]", t):
+                t = t[let.end():].strip()
+            else:
+                return ""
         t = t.strip("，,、;； 　")
-        # 太长或含拼音/英文时，退到第一个停顿处
-        if len(t) > limit or LATIN.search(t):
-            t = re.split(r"[，,、；;：:]", t)[0].strip()
+        head = re.split(r"[，,、；;：:。]", t)[0].strip()
+        if len(head) < 2:
+            return ""   # 「歌,咏也」「版,大版」这种：宁可空着
+        t = head
         t = re.sub(r"\s+", "", t)
-        if len(t) < 2 or LATIN.search(t):
+        if len(t) < 2 or len(t) > limit or LATIN.search(t):
             return ""
-        return t[:limit]
+        if any(k in t for k in SUSPICIOUS):
+            return ""
+        if t == ch:
+            return ""
+        return t.strip("，,、;； 　")
 
-    # 1) 「本义 XXX」通常是最好懂的一句
-    m = re.search(r"本义[：:]?\s*([^。\)）]+)", flat)
-    if m:
-        candidate = tidy(m.group(1))
-        if candidate:
-            return candidate
+    # 1) 「本义 XXX」：通常是孩子最好懂的一句
+    match = re.search(r"本义[：:]?\s*([^\)）]+)", flat)
+    if match:
+        for segment in re.split(r"[。]", match.group(1)):
+            if segment.strip() == ch:
+                continue
+            candidate = tidy(segment)
+            if candidate:
+                return candidate
 
-    # 2) 退而取第一条像定义的正文行，剔除引证（含《》或 --）
+    # 2) 正文里第一条像定义的话（剔除引证）
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     if lines and len(lines[0]) <= 2:
         lines = lines[1:]
     for line in lines:
-        if any(k in line for k in ("同本义", "又如", "另见", "本义", "--", "《", "（", "(")):
-            continue
         candidate = tidy(re.split(r"[。]", line)[0])
         if candidate:
             return candidate

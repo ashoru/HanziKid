@@ -156,6 +156,8 @@ final class CharacterCard {
     var meaning: String
     var words: [String]
     var frequency: Double
+    /// 字库外的字（拍照/手动录入的新字）：只有字形和笔顺，内容待补全
+    var needsContent: Bool = false
 
     init(hanzi: String,
          pinyin: String,
@@ -164,7 +166,8 @@ final class CharacterCard {
          strokeCount: Int,
          meaning: String,
          words: [String],
-         frequency: Double) {
+         frequency: Double,
+         needsContent: Bool = false) {
         self.hanzi = hanzi
         self.pinyin = pinyin
         self.pinyinAll = pinyinAll
@@ -173,6 +176,7 @@ final class CharacterCard {
         self.meaning = meaning
         self.words = words
         self.frequency = frequency
+        self.needsContent = needsContent
     }
 
     var isPolyphonic: Bool { pinyinAll.count > 1 }

@@ -16,6 +16,7 @@ struct TodayView: View {
     @State private var sessionItems: [StudyItem] = []
     @State private var showingSettings = false
     @State private var showingLibrary = false
+    @State private var showingCapture = false
 
     private var myStates: [SRSState] { allStates.filter { $0.profileID == profile.id } }
 
@@ -62,6 +63,11 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
+                        showingCapture = true
+                    } label: {
+                        Label("录新字", systemImage: "camera.viewfinder")
+                    }
+                    Button {
                         showingLibrary = true
                     } label: {
                         Label("字库", systemImage: "character.book.closed")
@@ -75,6 +81,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showingLibrary) {
                 LibraryView(profile: profile)
+            }
+            .sheet(isPresented: $showingCapture) {
+                CaptureView(profile: profile)
             }
             .sheet(isPresented: $showingSettings) {
                 ParentSettingsView()
@@ -109,6 +118,9 @@ struct TodayView: View {
             isStudying = true
         }
         if arguments.contains("--demo-library") { showingLibrary = true }
+        if arguments.contains("--demo-capture") || arguments.contains("--demo-capture-input") {
+            showingCapture = true
+        }
         if arguments.contains("--demo-settings") { showingSettings = true }
         #endif
     }

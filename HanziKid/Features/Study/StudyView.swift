@@ -109,7 +109,7 @@ struct StudyView: View {
                 SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
             } label: {
                 HStack(spacing: 10) {
-                    Text(card.pinyin)
+                    Text(card.pinyin.isEmpty ? "听读音" : card.pinyin)
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.accent)
                     Image(systemName: "speaker.wave.2.fill")
@@ -186,6 +186,15 @@ struct StudyView: View {
                     .foregroundStyle(Theme.inkSoft)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if card.needsContent {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                    Text("这个字是新录入的，释义和组词还没补全")
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.hard)
             }
 
             if profile.level == .primary, card.pinyinAll.count > 1 {

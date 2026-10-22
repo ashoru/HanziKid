@@ -265,6 +265,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "认字啦";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍孩子的课本和作业本，把上面的字自动识别成字卡";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "从相册选一张课文或作业的照片，把上面的字识别成字卡";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = NO;
@@ -293,6 +295,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "认字啦";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍孩子的课本和作业本，把上面的字自动识别成字卡";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "从相册选一张课文或作业的照片，把上面的字识别成字卡";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = NO;
