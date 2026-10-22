@@ -1,0 +1,15 @@
+# 构建产物
+.build/
+DerivedData/
+*.xcresult
+
+# 原始数据（可被 Tools/build_base_library.py 重新下载）
+Tools/raw/
+*.part
+
+# 系统 / IDE
+.DS_Store
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+.tmp/

@@ -1,0 +1,349 @@
+import SwiftUI
+import SwiftData
+
+/// 一页一字（核心学习页）
+struct StudyView: View {
+    let profile: Profile
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query private var allCards: [CharacterCard]
+
+    @State private var session: StudySession
+    @State private var boardToken = 0
+
+    init(profile: Profile, items: [StudyItem]) {
+        self.profile = profile
+        _session = State(initialValue: StudySession(items: items))
+    }
+
+    private var cardsByHanzi: [String: CharacterCard] {
+        Dictionary(allCards.map { ($0.hanzi, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.paper.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                topBar
+                if session.isFinished {
+                    finishedView
+                } else if let item = session.current, cardsByHanzi[item.hanzi] == nil {
+                    // 字库还在加载（首次启动 / 导入新内容时）
+                    ProgressView("正在准备字卡…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let item = session.current, let card = cardsByHanzi[item.hanzi] {
+                    GeometryReader { geo in
+                        // 横屏（宽 > 1000pt）左右分栏；竖屏上下排布
+                        let isWide = geo.size.width > 1000
+                        VStack(spacing: 0) {
+                            if isWide {
+                                HStack(alignment: .center, spacing: 28) {
+                                    characterPanel(card: card)
+                                        .frame(maxWidth: .infinity)
+                                    infoPanel(card: card)
+                                        .frame(width: min(440, geo.size.width * 0.4))
+                                }
+                                .frame(maxHeight: .infinity)
+                            } else {
+                                VStack(spacing: 14) {
+                                    characterPanel(card: card)
+                                        .frame(maxHeight: .infinity)
+                                    infoPanel(card: card, scrollable: false)
+                                }
+                            }
+                            gradeBar(item: item)
+                        }
+                        .padding(.horizontal, isWide ? 32 : 20)
+                        .padding(.bottom, 24)
+                    }
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .onDisappear { SpeechService.shared.stop() }
+    }
+
+    // MARK: 顶部进度
+
+    private var topBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.inkSoft)
+                        .frame(width: 44, height: 44)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.paperDeep)
+                        Capsule()
+                            .fill(Theme.accent)
+                            .frame(width: max(8, geo.size.width * session.progress))
+                            .animation(.easeInOut, value: session.progress)
+                    }
+                }
+                .frame(height: 12)
+
+                Text("还剩 \(session.remaining) 个")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.inkSoft)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+        }
+    }
+
+    // MARK: 左侧：拼音 + 米字格
+
+    private func characterPanel(card: CharacterCard) -> some View {
+        VStack(spacing: 14) {
+            Button {
+                SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+            } label: {
+                HStack(spacing: 10) {
+                    Text(card.pinyin)
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.accent)
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Theme.accent.opacity(0.8))
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(Theme.accentSoft, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            HanziBoard(hanzi: card.hanzi, replayTrigger: boardToken)
+                .frame(maxWidth: 520, maxHeight: .infinity)
+                .onTapGesture {
+                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                }
+
+            HStack(spacing: 12) {
+                smallAction(title: "听一听", icon: "speaker.wave.2.fill") {
+                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                }
+                smallAction(title: "再看笔顺", icon: "arrow.counterclockwise") {
+                    boardToken += 1
+                }
+            }
+        }
+    }
+
+    private func smallAction(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Theme.inkSoft)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Theme.card, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: 右侧：字形信息 + 组词 + 意思
+
+    @ViewBuilder
+    private func infoPanel(card: CharacterCard, scrollable: Bool = true) -> some View {
+        if scrollable {
+            ScrollView { infoContent(card: card) }
+        } else {
+            infoContent(card: card)
+        }
+    }
+
+    private func infoContent(card: CharacterCard) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                chip("部首 \(card.radical)")
+                chip("\(card.strokeCount) 画")
+                if card.isPolyphonic, profile.level == .primary {
+                    chip("多音字", tint: Theme.hard)
+                }
+            }
+
+            sectionTitle("组词")
+            FlowLayout(spacing: 10) {
+                ForEach(card.words(for: profile.level), id: \.self) { word in
+                    wordButton(word)
+                }
+            }
+
+            if profile.level.showsMeaning, !card.meaning.isEmpty {
+                sectionTitle("意思")
+                Text(card.meaning)
+                    .font(.system(size: profile.level == .preschool ? 20 : 18))
+                    .foregroundStyle(Theme.inkSoft)
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if profile.level == .primary, card.pinyinAll.count > 1 {
+                sectionTitle("读音")
+                Text(card.pinyinAll.joined(separator: " / "))
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .kidCard()
+    }
+
+    private func wordButton(_ word: String) -> some View {
+        Button {
+            SpeechService.shared.speak(word, rate: profile.speechRate)
+        } label: {
+            HStack(spacing: 6) {
+                Text(word)
+                    .font(HanziFont.font(size: 24))
+                Image(systemName: "speaker.wave.1.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.inkFaint)
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Theme.paperDeep, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.inkFaint)
+            .tracking(1)
+    }
+
+    private func chip(_ text: String, tint: Color = Theme.inkSoft) -> some View {
+        Text(text)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Theme.paperDeep, in: Capsule())
+    }
+
+    // MARK: 底部三档自评
+
+    private func gradeBar(item: StudyItem) -> some View {
+        HStack(spacing: 14) {
+            ForEach(ReviewGrade.allCases) { grade in
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        session.grade(grade, profile: profile, context: context)
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Text("\(grade.emoji) \(grade.title)")
+                            .font(.system(size: 22, weight: .semibold))
+                        Text(previewHint(grade, for: item.schedule))
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.gradeColor(grade), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 16)
+    }
+
+    private func previewHint(_ grade: ReviewGrade, for schedule: Schedule) -> String {
+        let next = Scheduler().next(schedule, grade: grade)
+        return next.humanDescription()
+    }
+
+    // MARK: 完成页
+
+    private var finishedView: some View {
+        VStack(spacing: 18) {
+            Spacer()
+            Text("🎉")
+                .font(.system(size: 90))
+            Text("今天的字都学完啦！")
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(Theme.ink)
+            Text("学了 \(session.newLearned) 个新字 · 记住 \(session.remembered) 个 · 还要加油 \(session.struggled) 个")
+                .font(.system(size: 18))
+                .foregroundStyle(Theme.inkSoft)
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Text("完成")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: 320)
+                    .padding(.vertical, 16)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 40)
+        }
+    }
+}
+
+// MARK: - 自动换行布局（组词芯片用）
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var rows: [CGFloat] = [0]
+        var currentRowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        var maxRowWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentRowWidth + size.width > maxWidth, currentRowWidth > 0 {
+                totalHeight += rowHeight + spacing
+                maxRowWidth = max(maxRowWidth, currentRowWidth - spacing)
+                rows.append(0)
+                currentRowWidth = 0
+                rowHeight = 0
+            }
+            currentRowWidth += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        totalHeight += rowHeight
+        maxRowWidth = max(maxRowWidth, currentRowWidth - spacing)
+        return CGSize(width: min(maxRowWidth, maxWidth), height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
