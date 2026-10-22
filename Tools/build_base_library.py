@@ -344,10 +344,29 @@ def build_decks(cards: list[dict]) -> list[dict]:
     # 四年级示例字表：取字库中频段（跳过启蒙字），代表"课本里的字"的难度
     rest = [c["hanzi"] for c in cards if c["hanzi"] not in seen]
     primary = rest[150:270] if len(rest) > 270 else rest[:120]
-    return [
-        {"name": f"启蒙 {len(preschool)} 字", "level": 1, "hanzi": preschool},
-        {"name": "四年级·示例 120 字", "level": 2, "hanzi": primary},
+    decks = [
+        {"name": "启蒙字表", "level": 1, "hanzi": preschool},
     ]
+    for book in load_textbook():
+        decks.append({"name": book["name"], "level": book["level"], "hanzi": book["hanzi"]})
+    decks.append({"name": "四年级示例", "level": 2, "hanzi": primary})
+    return decks
+
+
+def load_textbook() -> list[dict]:
+    path = ROOT / "Tools" / "textbook_characters.json"
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    books = []
+    for book in data.get("books", []):
+        seen: list[str] = []
+        for _label, chars in book.get("lessons", []):
+            for ch in chars:
+                if CJK.match(ch) and ch not in seen:
+                    seen.append(ch)
+        books.append({"name": book["name"], "level": int(book.get("level", 1)), "hanzi": seen})
+    return books
 
 
 def build(limit: int) -> None:
@@ -378,6 +397,17 @@ def build(limit: int) -> None:
     ]
     candidates.sort(key=lambda c: -char_freq[c])
     chosen = candidates[:limit]
+
+    # 课本字表里的字必须齐全（哪怕字频排在 3500 之外，比如 蜻蜓 蜘蛛 萤 掰）
+    textbooks = load_textbook()
+    extra: list[str] = []
+    for book in textbooks:
+        for ch in book["hanzi"]:
+            if ch not in chosen and ch not in extra and ch in xinhua and ch in strokes:
+                extra.append(ch)
+    if extra:
+        print(f"   课本字表补充 {len(extra)} 字：{''.join(extra)}")
+    chosen.extend(extra)
 
     # 兜底：把数字/基础字强制带上（幼儿启蒙最先学到）
     for c in "一二三四五六七八九十人口手大小上下中天日月山水火木土":

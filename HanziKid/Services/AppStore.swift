@@ -67,6 +67,7 @@ final class AppStore: ObservableObject {
         loadSnapshot()
         seedIfNeeded()
         rebuildIndexes()
+        syncSeedDecks()
     }
 
     // MARK: 字库
@@ -116,10 +117,11 @@ final class AppStore: ObservableObject {
         decks.first { $0.name == name }
     }
 
-    /// 该学段可用的字表（没有匹配的就返回全部）
+    /// 可选字表：本学段的排在前面，其他学段的也列出来（家长可以给任何一个孩子指派任何字表）
     func decks(for level: LearnerLevel) -> [Deck] {
         let matched = decks.filter { $0.level == level }
-        return matched.isEmpty ? decks : matched
+        let others = decks.filter { $0.level != level }
+        return matched + others
     }
 
     func updateDeck(named name: String, _ mutate: (inout Deck) -> Void) {
@@ -248,6 +250,24 @@ final class AppStore: ObservableObject {
         let second = Profile(name: "果果", level: .primary, emoji: "🦁", activeDeckName: primaryDeck)
         profiles = [first, second]
         scheduleSave()
+    }
+
+    /// 把 decks.json 里新增的字表补进来（老存档也能拿到新字表），并保证每个字都有字卡
+    private func syncSeedDecks() {
+        var changed = false
+        for seed in BaseLibrary.loadDecks() where !decks.contains(where: { $0.name == seed.name }) {
+            let level = LearnerLevel(rawValue: seed.level) ?? .preschool
+            decks.append(Deck(name: seed.name, hanziList: seed.hanzi, level: level))
+            changed = true
+        }
+        if changed { scheduleSave() }
+
+        // 课本字表里可能有字库外的字（例如 蜻蜓/掰），补成"待补全"卡片，避免学习页空着
+        for deck in decks {
+            for hanzi in deck.hanziList where card(for: hanzi) == nil {
+                _ = ensureCard(for: hanzi)
+            }
+        }
     }
 
     // MARK: 索引

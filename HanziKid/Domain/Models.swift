@@ -54,6 +54,15 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// 声音性别（只做二选一，具体音色由系统决定）
+enum SpeechGender: String, CaseIterable, Identifiable, Codable {
+    case female
+    case male
+
+    var id: String { rawValue }
+    var title: String { self == .female ? "女声" : "男声" }
+}
+
 // MARK: - 学习者档案
 
 struct Profile: Identifiable, Codable, Equatable {
@@ -73,6 +82,16 @@ struct Profile: Identifiable, Codable, Equatable {
     var bonusNew: Int
     var bonusReview: Int
 
+    // 朗读设置（可选字段，老存档没有也能读出来）
+    /// 切到新字后自动朗读
+    var autoReadRaw: Bool?
+    /// 每一遍之间给孩子的跟读停顿（秒）
+    var pauseSecondsRaw: Double?
+    /// 声音性别 "female" / "male"
+    var voiceGenderRaw: String?
+    /// 每个字读几遍
+    var repeatCountRaw: Int?
+
     init(name: String,
          level: LearnerLevel,
          emoji: String,
@@ -91,6 +110,33 @@ struct Profile: Identifiable, Codable, Equatable {
         self.bonusDateKey = ""
         self.bonusNew = 0
         self.bonusReview = 0
+        self.autoReadRaw = true
+        self.pauseSecondsRaw = level == .preschool ? 1.6 : 1.2
+        self.voiceGenderRaw = SpeechGender.female.rawValue
+        self.repeatCountRaw = 3
+    }
+
+    // MARK: 朗读设置
+
+    var autoRead: Bool {
+        get { autoReadRaw ?? true }
+        set { autoReadRaw = newValue }
+    }
+
+    /// 跟读停顿（秒）
+    var pauseSeconds: Double {
+        get { pauseSecondsRaw ?? (level == .preschool ? 1.6 : 1.2) }
+        set { pauseSecondsRaw = newValue }
+    }
+
+    var voiceGender: SpeechGender {
+        get { SpeechGender(rawValue: voiceGenderRaw ?? "") ?? .female }
+        set { voiceGenderRaw = newValue.rawValue }
+    }
+
+    var repeatCount: Int {
+        get { repeatCountRaw ?? 3 }
+        set { repeatCountRaw = newValue }
     }
 
     var level: LearnerLevel {

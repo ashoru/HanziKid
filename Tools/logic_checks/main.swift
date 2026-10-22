@@ -132,6 +132,42 @@ func runPlannerChecks() {
     check("会话推进到结束", session2.isFinished)
 }
 
+@MainActor
+func runSettingsChecks() {
+    print("朗读设置 / 字表")
+    var profile = Profile(name: "豆豆", level: .preschool, emoji: "🐣")
+    check("默认开启自动朗读", profile.autoRead == true)
+    check("默认读 3 遍", profile.repeatCount == 3)
+    check("默认跟读停顿 1.6 秒（中班）", abs(profile.pauseSeconds - 1.6) < 0.001)
+    check("默认女声", profile.voiceGender == .female)
+
+    profile.pauseSeconds = 2.4
+    profile.repeatCount = 2
+    profile.voiceGender = .male
+    profile.autoRead = false
+    check("设置可以改", profile.pauseSeconds == 2.4 && profile.repeatCount == 2
+          && profile.voiceGender == .male && profile.autoRead == false)
+
+    let primary = Profile(name: "果果", level: .primary, emoji: "🦁")
+    check("四年级默认停顿 1.2 秒", abs(primary.pauseSeconds - 1.2) < 0.001)
+
+    // 老存档（没有这些字段）也要能读出来用默认值
+    let legacy = Profile(name: "老档案", level: .preschool, emoji: "🐣")
+    var legacyCopy = legacy
+    legacyCopy.autoReadRaw = nil
+    legacyCopy.pauseSecondsRaw = nil
+    legacyCopy.voiceGenderRaw = nil
+    legacyCopy.repeatCountRaw = nil
+    check("老存档缺字段时用默认值",
+          legacyCopy.autoRead && legacyCopy.repeatCount == 3 && legacyCopy.voiceGender == .female)
+
+    let store = AppStore(storage: .memory)
+    let made = store.createDeck(named: "一年级上册", level: .preschool, hanziList: ["天", "地"])
+    let allForPrimary = store.decks(for: .primary)
+    check("字表不分学段都能选到", allForPrimary.contains { $0.name == made.name })
+    check("字表里的字都会建卡", store.card(for: "天") != nil || store.card(for: "地") != nil)
+}
+
 print("OCR 抽字")
 check("去掉标点、拼音和重复字",
       HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
@@ -169,6 +205,7 @@ func runImporterChecks() {
 MainActor.assumeIsolated {
     runPlannerChecks()
     runImporterChecks()
+    runSettingsChecks()
 }
 
 print("")

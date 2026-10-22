@@ -8,6 +8,8 @@ struct StudyView: View {
 
     @StateObject private var session: StudySession
     @State private var boardToken = 0
+    @State private var readTask: Task<Void, Never>?
+    @State private var isReading = false
 
     init(profile: Profile, items: [StudyItem]) {
         self.profile = profile
@@ -50,10 +52,12 @@ struct StudyView: View {
                                     infoPanel(card: card, scrollable: false)
                                 }
                             }
+                            Spacer(minLength: 18)
                             gradeBar(item: item)
                         }
                         .padding(.horizontal, isWide ? 32 : 20)
-                        .padding(.bottom, 24)
+                        .padding(.top, 8)
+                        .padding(.bottom, 28)
                     }
                 } else {
                     ProgressView()
@@ -61,7 +65,52 @@ struct StudyView: View {
                 }
             }
         }
-        .onDisappear { SpeechService.shared.stop() }
+        .onAppear { autoRead() }
+        .onChange(of: session.index) { _ in autoRead() }
+        .onDisappear {
+            readTask?.cancel()
+            readTask = nil
+            SpeechService.shared.stop()
+        }
+    }
+
+    // MARK: 自动朗读（读 3 遍字 + 3 个组词，中间留跟读停顿）
+
+    private var currentCard: CharacterCard? {
+        guard let item = session.current else { return nil }
+        return lookupCard(item.hanzi)
+    }
+
+    private func autoRead() {
+        readTask?.cancel()
+        SpeechService.shared.stop()
+        guard profile.autoRead, let card = currentCard else {
+            isReading = false
+            return
+        }
+        let hanzi = card.hanzi
+        let words = Array(card.words(for: profile.level).prefix(3))
+        let repeatCount = max(1, min(5, profile.repeatCount))
+        let pause = UInt64(max(0.2, profile.pauseSeconds) * 1_000_000_000)
+        let rate = profile.speechRate
+        let gender = profile.voiceGender
+
+        isReading = true
+        readTask = Task { @MainActor in
+            for _ in 0..<repeatCount {
+                if Task.isCancelled { return }
+                await SpeechService.shared.speakAndWait(hanzi, rate: rate, gender: gender)
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: pause)
+            }
+            for word in words {
+                if Task.isCancelled { return }
+                await SpeechService.shared.speakAndWait(word, rate: rate, gender: gender)
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: pause)
+            }
+            isReading = false
+        }
     }
 
     // MARK: 顶部进度
@@ -104,7 +153,7 @@ struct StudyView: View {
     private func characterPanel(card: CharacterCard) -> some View {
         VStack(spacing: 14) {
             Button {
-                SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                SpeechService.shared.speak(card.hanzi, rate: profile.speechRate, gender: profile.voiceGender)
             } label: {
                 HStack(spacing: 10) {
                     Text(card.pinyin.isEmpty ? "听读音" : card.pinyin)
@@ -123,12 +172,13 @@ struct StudyView: View {
             HanziBoard(hanzi: card.hanzi, replayTrigger: boardToken)
                 .frame(maxWidth: 520, maxHeight: .infinity)
                 .onTapGesture {
-                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate, gender: profile.voiceGender)
                 }
 
-            HStack(spacing: 12) {
-                smallAction(title: "听一听", icon: "speaker.wave.2.fill") {
-                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+            HStack(spacing: 16) {
+                smallAction(title: isReading ? "再读一遍" : "听一听",
+                            icon: isReading ? "speaker.wave.3.fill" : "speaker.wave.2.fill") {
+                    autoRead()
                 }
                 smallAction(title: "再看笔顺", icon: "arrow.counterclockwise") {
                     boardToken += 1
@@ -139,12 +189,17 @@ struct StudyView: View {
 
     private func smallAction(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Theme.inkSoft)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Theme.card, in: Capsule())
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 22))
+                Text(title)
+                    .font(.system(size: 22, weight: .medium))
+            }
+            .foregroundStyle(Theme.inkSoft)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 16)
+            .background(Theme.card, in: Capsule())
+            .shadow(color: Theme.shadow, radius: 8, y: 3)
         }
         .buttonStyle(.plain)
     }
@@ -161,7 +216,7 @@ struct StudyView: View {
     }
 
     private func infoContent(card: CharacterCard) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 chip("部首 \(card.radical)")
                 chip("\(card.strokeCount) 画")
@@ -180,7 +235,7 @@ struct StudyView: View {
             if profile.level.showsMeaning, !card.meaning.isEmpty {
                 sectionTitle("意思")
                 Text(card.meaning)
-                    .font(.system(size: profile.level == .preschool ? 20 : 18))
+                    .font(.system(size: profile.level == .preschool ? 26 : 24))
                     .foregroundStyle(Theme.inkSoft)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -191,14 +246,14 @@ struct StudyView: View {
                     Image(systemName: "sparkles")
                     Text("这个字是新录入的，释义和组词还没补全")
                 }
-                .font(.system(size: 13))
+                .font(.system(size: 15))
                 .foregroundStyle(Theme.hard)
             }
 
             if profile.level == .primary, card.pinyinAll.count > 1 {
                 sectionTitle("读音")
                 Text(card.pinyinAll.joined(separator: " / "))
-                    .font(.system(size: 18))
+                    .font(.system(size: 22))
                     .foregroundStyle(Theme.inkSoft)
             }
         }
@@ -208,36 +263,36 @@ struct StudyView: View {
 
     private func wordButton(_ word: String) -> some View {
         Button {
-            SpeechService.shared.speak(word, rate: profile.speechRate)
+            SpeechService.shared.speak(word, rate: profile.speechRate, gender: profile.voiceGender)
         } label: {
             HStack(spacing: 6) {
                 Text(word)
-                    .font(HanziFont.font(size: 24))
+                    .font(HanziFont.font(size: 32))
                 Image(systemName: "speaker.wave.1.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 15))
                     .foregroundStyle(Theme.inkFaint)
             }
             .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Theme.paperDeep, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Theme.paperDeep, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(Theme.inkFaint)
             .tracking(1)
     }
 
     private func chip(_ text: String, tint: Color = Theme.inkSoft) -> some View {
         Text(text)
-            .font(.system(size: 16, weight: .medium))
+            .font(.system(size: 19, weight: .medium))
             .foregroundStyle(tint)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background(Theme.paperDeep, in: Capsule())
     }
 
@@ -268,7 +323,7 @@ struct StudyView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 16)
+        .padding(.top, 8)
     }
 
     private func previewHint(_ grade: ReviewGrade, for schedule: Schedule) -> String {

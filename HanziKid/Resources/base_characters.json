@@ -1,7 +1,7 @@
 {
  "version": 2,
- "contentHash": "3e0f5f6d62dc",
- "count": 3500,
+ "contentHash": "f7b077fa6437",
+ "count": 3506,
  "characters": [
   {
    "hanzi": "一",
@@ -67557,6 +67557,117 @@
     "磨砥刻厉"
    ],
    "frequency": 631.0
+  },
+  {
+   "hanzi": "粽",
+   "pinyin": "zòng",
+   "pinyinAll": [
+    "zòng"
+   ],
+   "radical": "米",
+   "strokeCount": 14,
+   "meaning": "粽子",
+   "words": [
+    "粽子",
+    "粽粑"
+   ],
+   "frequency": 402.0
+  },
+  {
+   "hanzi": "蜻",
+   "pinyin": "qīng",
+   "pinyinAll": [
+    "qīng",
+    "jīng"
+   ],
+   "radical": "虫",
+   "strokeCount": 14,
+   "meaning": "蜻蜓",
+   "words": [
+    "蜻蜓",
+    "蜻蛉",
+    "蜻蜒",
+    "竖蜻蜓",
+    "小蜻蜓",
+    "红蜻蜓"
+   ],
+   "frequency": 147.6
+  },
+  {
+   "hanzi": "蜓",
+   "pinyin": "tíng",
+   "pinyinAll": [
+    "tíng",
+    "diàn"
+   ],
+   "radical": "虫",
+   "strokeCount": 12,
+   "meaning": "见［蜻蜓]",
+   "words": [
+    "蜻蜓",
+    "蜻蜓点水",
+    "竖蜻蜓",
+    "小蜻蜓",
+    "红蜻蜓",
+    "蜿蜓起伏"
+   ],
+   "frequency": 165.4
+  },
+  {
+   "hanzi": "蜘",
+   "pinyin": "zhī",
+   "pinyinAll": [
+    "zhī"
+   ],
+   "radical": "虫",
+   "strokeCount": 14,
+   "meaning": "",
+   "words": [
+    "蜘蛛",
+    "蜘蜘",
+    "毒蜘蛛",
+    "红蜘蛛",
+    "棉红蜘蛛",
+    "金蜘蛛"
+   ],
+   "frequency": 367.4
+  },
+  {
+   "hanzi": "萤",
+   "pinyin": "yíng",
+   "pinyinAll": [
+    "yíng"
+   ],
+   "radical": "艹",
+   "strokeCount": 11,
+   "meaning": "动物名",
+   "words": [
+    "萤石",
+    "萤火",
+    "萤光",
+    "萤幕",
+    "萤桥",
+    "萤窗"
+   ],
+   "frequency": 589.2
+  },
+  {
+   "hanzi": "掰",
+   "pinyin": "bāi",
+   "pinyinAll": [
+    "bāi"
+   ],
+   "radical": "手",
+   "strokeCount": 12,
+   "meaning": "用手把东西分开或折断",
+   "words": [
+    "掰开",
+    "掰断",
+    "掰掰",
+    "瞎掰",
+    "掰腕子"
+   ],
+   "frequency": 356.6
   }
  ]
 }

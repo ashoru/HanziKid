@@ -80,7 +80,7 @@ struct TodayView: View {
             .sheet(isPresented: $showingCapture) {
                 CaptureView(profile: profile)
             }
-            .sheet(isPresented: $showingSettings) {
+            .fullScreenCover(isPresented: $showingSettings) {
                 ParentSettingsView()
             }
             .fullScreenCover(isPresented: $isStudying) {
@@ -111,6 +111,10 @@ struct TodayView: View {
         if arguments.contains("--demo-study"), !plan.items.isEmpty {
             sessionItems = plan.items
             isStudying = true
+        }
+        if let index = arguments.firstIndex(of: "--demo-deck"), index + 1 < arguments.count {
+            let name = arguments[index + 1]
+            store.updateProfile(profile.id) { $0.activeDeckName = name }
         }
         if arguments.contains("--demo-library") { showingLibrary = true }
         if arguments.contains("--demo-capture") || arguments.contains("--demo-capture-input") {

@@ -82,6 +82,59 @@ struct ParentSettingsView: View {
                             ), in: 0.25...0.6)
                         }
 
+                        Toggle(isOn: Binding(
+                            get: { profile.autoRead },
+                            set: { newValue in store.updateProfile(profile.id) { $0.autoRead = newValue } }
+                        )) {
+                            Text("切到新字自动朗读")
+                        }
+
+                        Stepper(value: Binding(
+                            get: { profile.repeatCount },
+                            set: { newValue in store.updateProfile(profile.id) { $0.repeatCount = newValue } }
+                        ), in: 1...5) {
+                            HStack {
+                                Text("每个字读几遍")
+                                Spacer()
+                                Text("\(profile.repeatCount) 遍")
+                                    .foregroundStyle(Theme.accent)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("跟读停顿")
+                                Spacer()
+                                Text(String(format: "%.1f 秒", profile.pauseSeconds))
+                                    .foregroundStyle(Theme.accent)
+                                    .monospacedDigit()
+                            }
+                            Slider(value: Binding(
+                                get: { profile.pauseSeconds },
+                                set: { newValue in store.updateProfile(profile.id) { $0.pauseSeconds = newValue } }
+                            ), in: 0.5...4.0, step: 0.1)
+                            Text("每读一遍（以及每个组词之间）停这么久，留出孩子跟读的时间")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.inkFaint)
+                        }
+
+                        Picker("声音", selection: Binding(
+                            get: { profile.voiceGender },
+                            set: { newValue in store.updateProfile(profile.id) { $0.voiceGender = newValue } }
+                        )) {
+                            ForEach(SpeechGender.allCases) { gender in
+                                Text("\(gender.title) · \(SpeechService.shared.voiceDescription(for: gender))")
+                                    .tag(gender)
+                            }
+                        }
+
+                        if !SpeechService.shared.hasVoice(for: .male) {
+                            Text("这台设备还没有中文男声。可以在 设置 → 辅助功能 → 朗读内容 → 声音 → 中文 里下载一个男声，返回后这里会自动出现。")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.hard)
+                        }
+
                         Picker("当前字表", selection: Binding(
                             get: { profile.activeDeckName },
                             set: { newValue in store.updateProfile(profile.id) { $0.activeDeckName = newValue } }
