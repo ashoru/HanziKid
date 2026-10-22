@@ -85,14 +85,23 @@ push_retry() {
   return 1
 }
 
-api() { # api METHOD PATH [json] → 输出 body，非 2xx 返回非 0
-  local method="$1" path="$2" data="${3:-}" out code
+api() { # api METHOD PATH [json] → 输出 body，非 2xx 返回非 0（网络抖动/5xx 自动重试）
+  local method="$1" path="$2" data="${3:-}" out code attempt
   local args=(-sS --max-time 60 -X "${method}" -H "Authorization: token $(gh_token)" -H "Accept: application/vnd.github+json")
   [ -n "${data}" ] && args+=(-H "Content-Type: application/json" -d "${data}")
-  out=$(curl "${args[@]}" -w $'\n%{http_code}' "https://api.github.com${path}")
-  code=$(printf '%s' "${out}" | tail -1)
+  for attempt in 1 2 3; do
+    out=$(curl "${args[@]}" -w $'\n%{http_code}' "https://api.github.com${path}" || true)
+    code=$(printf '%s' "${out}" | tail -1)
+    case "${code}" in
+      2*) printf '%s' "${out}" | sed '$d'; return 0 ;;
+      000|"") [ "${attempt}" -lt 3 ] && { echo "   网络抖动，重试（${attempt}/3）…" >&2; sleep 3; continue; } ;;
+      5*|429)  [ "${attempt}" -lt 3 ] && { echo "   HTTP ${code}，重试（${attempt}/3）…" >&2; sleep 3; continue; } ;;
+    esac
+    break
+  done
   printf '%s' "${out}" | sed '$d'
-  case "${code}" in 2*) return 0 ;; *) echo "   HTTP ${code}" >&2; return 1 ;; esac
+  echo "   HTTP ${code}" >&2
+  return 1
 }
 
 # ---------- 1. 提交 ----------
@@ -217,6 +226,13 @@ if [ -z "${IPA}" ]; then
 fi
 
 ASSET_NAME=$(basename "${IPA}")
+# GitHub 会把 asset 名里的括号等字符换成点，所以上传名单独规整成
+# HanziKid-0.5.0(5)-unsigned.ipa → HanziKid-0.5.0-build5-unsigned.ipa
+ASSET_UPLOAD_NAME=$(python3 -c 'import re,sys
+n = sys.argv[1]
+n = re.sub(r"\((\d+)\)", r"-build\1", n)
+n = re.sub(r"[^A-Za-z0-9._-]+", "-", n)
+print(re.sub(r"-{2,}", "-", n))' "${ASSET_NAME}")
 UPLOAD_URL=$(printf '%s' "${RELEASE_JSON}" | python3 -c 'import json,sys
 try: print(json.load(sys.stdin).get("upload_url","").split("{")[0])
 except Exception: print("")' 2>/dev/null || true)
@@ -230,22 +246,34 @@ try:
     for a in json.load(sys.stdin):
         if a.get("name")==name:
             print(a["id"]); break
-except Exception: pass' "${ASSET_NAME}" 2>/dev/null || true)
+except Exception: pass' "${ASSET_UPLOAD_NAME}" 2>/dev/null || true)
 if [ -n "${OLD_ASSET_ID}" ]; then
   api DELETE "/repos/${SLUG}/releases/assets/${OLD_ASSET_ID}" >/dev/null || true
-  echo "   已删除旧 asset ${ASSET_NAME}"
+  echo "   已删除同名旧 asset ${ASSET_UPLOAD_NAME}"
 fi
 
-echo "   上传 ${ASSET_NAME}（$(du -h "${IPA}" | cut -f1)）…"
-QNAME=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "${ASSET_NAME}")
-curl -sS --max-time 1800 -X POST \
-  -H "Authorization: token $(gh_token)" \
-  -H "Content-Type: application/octet-stream" \
-  -H "Accept: application/vnd.github+json" \
-  --data-binary "@${IPA}" \
-  "${UPLOAD_URL}?name=${QNAME}" \
-  | python3 -c 'import json,sys
-d=json.load(sys.stdin)
-print("   ✅ 已上传：", d.get("browser_download_url") or d.get("message"))'
+echo "   上传 ${ASSET_NAME}（$(du -h "${IPA}" | cut -f1)）→ asset 名 ${ASSET_UPLOAD_NAME}"
+QNAME=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "${ASSET_UPLOAD_NAME}")
+UP_OK=0
+for attempt in 1 2 3; do
+  RESP=$(curl -sS --max-time 1800 -X POST \
+    -H "Authorization: token $(gh_token)" \
+    -H "Content-Type: application/octet-stream" \
+    -H "Accept: application/vnd.github+json" \
+    --data-binary "@${IPA}" \
+    "${UPLOAD_URL}?name=${QNAME}" || true)
+  if printf '%s' "${RESP}" | grep -q browser_download_url; then
+    printf '%s' "${RESP}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("   ✅ 已上传：", d["browser_download_url"])'
+    UP_OK=1
+    break
+  fi
+  echo "   上传失败（第 ${attempt} 次）：$(printf '%s' "${RESP}" | head -c 200)" >&2
+  sleep 3
+done
+
+if [ "${UP_OK}" != "1" ]; then
+  echo "⚠️ IPA 没传上去（源码和 tag 已同步）：网络恢复后重跑 ./Tools/sync_github.sh 即可补传"
+  exit 1
+fi
 
 echo "✅ 同步完成：https://github.com/${SLUG}/releases/tag/${TAG}"
