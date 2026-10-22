@@ -305,7 +305,7 @@ struct TodayView: View {
                 HStack(spacing: 12) {
                     ForEach(recentCards, id: \.hanzi) { card in
                         Button {
-                            SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                            Pronunciation.speak(card.hanzi, profile: profile)
                         } label: {
                             VStack(spacing: 4) {
                                 Text(card.hanzi)

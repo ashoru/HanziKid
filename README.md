@@ -67,7 +67,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 ```bash
 ./Tools/package_ipa.sh
-# → dist/HanziKid-unsigned.ipa（约 4.5 MB，Payload/HanziKid.app，arm64，iPad only，最低 iOS 16.0）
+# → dist/HanziKid-unsigned.ipa（约 61 MB，含全部预生成发音；arm64，iPad only，最低 iOS 16.0）
 ```
 
 产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
@@ -81,7 +81,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | 设备族 | 仅 iPad（UIDeviceFamily = 2） |
 | 签名 | 完全没有签名（`code object is not signed at all`） |
 | 强依赖框架 | Foundation / UIKit / SwiftUI / Vision / AVFAudio / Combine（iOS 16 全都有；Spatial 等新库是弱链接，缺失不影响启动） |
-| 大小 | 约 4.5 MB（12.5 MB 解包，主要是 3500 字的笔顺数据） |
+| 大小 | 约 61 MB（104 MB 解包：83 MB 预生成发音 + 9.5 MB 笔顺） |
 
 **无签名 IPA 不能直接装进 iPad**，需要先用你自己的 Apple ID 重签一次：
 
@@ -92,6 +92,23 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 因为重签会改 Bundle ID（多数工具默认改），App 的数据是按 Bundle ID 存的，**换工具重签后可能看不到之前的进度**，建议固定用同一个工具 + 同一个 Bundle ID。
 
+## 发音从哪来（重要）
+
+**不用系统 TTS 了**：系统读单个汉字只有 0.5 秒左右，又短又急。现在改成**预生成音频打包进 App**：
+
+- 来源：百度翻译的 TTS 接口（`fanyi.baidu.com/gettts`），单字语速慢一档、组词正常语速
+- 覆盖：3506 个单字 + 4284 个组词（四个字表里用到的词），全部离线文件，运行时不需要联网
+- 单字音频约 1.2–1.3 秒，尾音自然，不再是"半个音节就掐掉"
+- 缺音频的字/词（极少数）会自动回退系统 TTS
+- 声音设置里：**女声 = 预生成录音**，**男声 = 系统语音**（百度这个接口只给女声；要真·男声录音得换成付费 TTS 服务，可以后续接）
+
+```bash
+python3 Tools/fetch_audio.py            # 重新/补抓音频（已存在会跳过）
+python3 Tools/fetch_audio.py --only-chars
+```
+
+> 这些音频是百度 TTS 生成、仅供家庭自用打包的；如果以后要上架或对外分发，需要换成有授权的 TTS 服务，别直接分发这批文件。
+
 ## 朗读相关设置（家长设置里，按孩子分别设置）
 
 | 设置 | 默认 | 说明 |
@@ -99,7 +116,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | 切到新字自动朗读 | 开 | 进入一个字就自动开始 |
 | 每个字读几遍 | 3 遍 | 1–5 遍可调 |
 | 跟读停顿 | 中班 1.6 秒 / 四年级 1.2 秒 | 0.5–4.0 秒，作用于「字与字之间」和「词与词之间」 |
-| 声音 | 女声 | 女声 / 男声切换，显示实际使用的系统音色（如「婷婷（标准）」） |
+| 声音 | 女声（预生成录音） | 女声走预生成音频；男声走系统音色（显示实际音色名，如「婷婷（标准）」） |
 
 顺序是：读字 → 停顿 → 读字 → 停顿 → 读字 → 停顿 → 组词 1 → 停顿 → 组词 2 → 停顿 → 组词 3。
 
@@ -185,7 +202,8 @@ python3 Tools/build_base_library.py --limit 3500 --force   # 强制重新下载�
 ## 测试
 
 ```bash
-./Tools/check_logic.sh       # 42 项逻辑断言（调度器 / 每日上限 / 排程 / 双档案隔离 / 抽字 / 入库）
+python3 Tools/fetch_audio.py # 抓发音（首次或换内容后跑一次，约 12 分钟，产物不进 git）
+./Tools/check_logic.sh       # 51 项逻辑断言（调度器 / 每日上限 / 排程 / 双档案隔离 / 抽字 / 入库）
 ./Tools/package_ipa.sh       # 打无签名 IPA
 # 或在 Xcode 里 ⌘U 跑 HanziKidTests（同一批用例的 XCTest 版本）
 ```

@@ -70,7 +70,7 @@ struct StudyView: View {
         .onDisappear {
             readTask?.cancel()
             readTask = nil
-            SpeechService.shared.stop()
+            Pronunciation.stop()
         }
     }
 
@@ -83,7 +83,7 @@ struct StudyView: View {
 
     private func autoRead() {
         readTask?.cancel()
-        SpeechService.shared.stop()
+        Pronunciation.stop()
         guard profile.autoRead, let card = currentCard else {
             isReading = false
             return
@@ -92,20 +92,18 @@ struct StudyView: View {
         let words = Array(card.words(for: profile.level).prefix(3))
         let repeatCount = max(1, min(5, profile.repeatCount))
         let pause = UInt64(max(0.2, profile.pauseSeconds) * 1_000_000_000)
-        let rate = profile.speechRate
-        let gender = profile.voiceGender
 
         isReading = true
         readTask = Task { @MainActor in
             for _ in 0..<repeatCount {
                 if Task.isCancelled { return }
-                await SpeechService.shared.speakAndWait(hanzi, rate: rate, gender: gender)
+                await Pronunciation.speakAndWait(hanzi, profile: profile)
                 if Task.isCancelled { return }
                 try? await Task.sleep(nanoseconds: pause)
             }
             for word in words {
                 if Task.isCancelled { return }
-                await SpeechService.shared.speakAndWait(word, rate: rate, gender: gender)
+                await Pronunciation.speakAndWait(word, profile: profile)
                 if Task.isCancelled { return }
                 try? await Task.sleep(nanoseconds: pause)
             }
@@ -153,7 +151,7 @@ struct StudyView: View {
     private func characterPanel(card: CharacterCard) -> some View {
         VStack(spacing: 14) {
             Button {
-                SpeechService.shared.speak(card.hanzi, rate: profile.speechRate, gender: profile.voiceGender)
+                Pronunciation.speak(card.hanzi, profile: profile)
             } label: {
                 HStack(spacing: 10) {
                     Text(card.pinyin.isEmpty ? "听读音" : card.pinyin)
@@ -172,7 +170,7 @@ struct StudyView: View {
             HanziBoard(hanzi: card.hanzi, replayTrigger: boardToken)
                 .frame(maxWidth: 520, maxHeight: .infinity)
                 .onTapGesture {
-                    SpeechService.shared.speak(card.hanzi, rate: profile.speechRate, gender: profile.voiceGender)
+                    Pronunciation.speak(card.hanzi, profile: profile)
                 }
 
             HStack(spacing: 16) {
@@ -263,7 +261,7 @@ struct StudyView: View {
 
     private func wordButton(_ word: String) -> some View {
         Button {
-            SpeechService.shared.speak(word, rate: profile.speechRate, gender: profile.voiceGender)
+            Pronunciation.speak(word, profile: profile)
         } label: {
             HStack(spacing: 6) {
                 Text(word)

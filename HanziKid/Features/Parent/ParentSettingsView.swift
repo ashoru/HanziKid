@@ -124,7 +124,7 @@ struct ParentSettingsView: View {
                             set: { newValue in store.updateProfile(profile.id) { $0.voiceGender = newValue } }
                         )) {
                             ForEach(SpeechGender.allCases) { gender in
-                                Text("\(gender.title) · \(SpeechService.shared.voiceDescription(for: gender))")
+                                Text("\(gender.title) · \(gender == .female ? "预生成录音" : SpeechService.shared.voiceDescription(for: gender))")
                                     .tag(gender)
                             }
                         }

@@ -184,7 +184,7 @@ struct LibraryView: View {
                                 .foregroundStyle(Theme.inkFaint)
                         }
                         Button {
-                            SpeechService.shared.speak(card.hanzi, rate: profile.speechRate)
+                            Pronunciation.speak(card.hanzi, profile: profile)
                         } label: {
                             Label("听发音", systemImage: "speaker.wave.2.fill")
                                 .font(.system(size: 16, weight: .medium))
