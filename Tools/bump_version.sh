@@ -59,4 +59,5 @@ else:
 print(f"{new_version} (build {build})")
 PY
 
-echo "已更新 CHANGELOG.md，记得把 TODO 那条改成实际改动再打包"
+echo "已更新 CHANGELOG.md，把 TODO 那条改成实际改动后打包：./Tools/package_ipa.sh"
+echo "（打包成功会自动 commit + push 到 GitHub、打 vX.Y.Z tag、并把 IPA 传到 Releases）"

@@ -107,6 +107,47 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 因为重签会改 Bundle ID（多数工具默认改），App 的数据是按 Bundle ID 存的，**换工具重签后可能看不到之前的进度**，建议固定用同一个工具 + 同一个 Bundle ID。
 
+## 同步到 GitHub（自动发版）
+
+仓库：<https://github.com/ashoru/HanziKid>（私有）
+
+发版流程就两条命令，推送、tag、上传安装包都会自动做完：
+
+```bash
+./Tools/bump_version.sh minor   # 升版本号 + build，CHANGELOG 顶部插入待填条目
+# …把 CHANGELOG 里的 TODO 改成实际改动…
+./Tools/package_ipa.sh          # 编译 → 打包 IPA → 自动同步 GitHub
+```
+
+`Tools/package_ipa.sh` 最后一步会调 `Tools/sync_github.sh`，它做的事（幂等，可重复跑）：
+
+1. 有未提交改动就 commit（说明默认 `release: HanziKid-x.y.z(build)`）
+2. 推送 `main`
+3. 打版本 tag `vX.Y.Z` 并推送（已存在则跳过）
+4. 建/更新 Release，说明自动取 `CHANGELOG.md` 里对应版本那段
+5. 把 `dist/HanziKid-<版本>(<build>)-unsigned.ipa` 传到 Release Assets
+
+单独用：
+
+```bash
+./Tools/sync_github.sh --dry-run          # 只看要做什么
+./Tools/sync_github.sh -m "fix: 修 xxx"   # 手动指定提交说明
+./Tools/sync_github.sh --no-ipa           # 只同步源码和 tag，不传 IPA
+SYNC_GITHUB=0 ./Tools/package_ipa.sh      # 这次打包不碰 GitHub
+```
+
+**API key（Personal Access Token）放在哪**
+
+- 申请 / 查看：<https://github.com/settings/tokens>（classic，scopes 勾 `repo` + `workflow`）
+  细粒度令牌在 <https://github.com/settings/personal-access-tokens/new>（给 `HanziKid` 仓库 `Contents: Read and write`）
+- **本机已经存在 macOS 钥匙串里**（服务 `github.com`，账号 `ashoru`），脚本通过 `git credential-osxkeychain` 读取，
+  **token 不会写进仓库、`.git/config`、脚本或环境变量文件**
+- 想临时换一个：`GH_TOKEN=github_pat_xxx ./Tools/sync_github.sh`（脚本优先用它）
+- 换新 token 后同步更新钥匙串：`git credential-osxkeychain erase`（粘贴 `protocol=https` / `host=github.com` 后回车两下），
+  下次 push 时输入新 token 即可记住
+
+`.gitignore` 已排除 `dist/`、`Tools/audio/`、`HanziKid/Resources/audio/`，所以仓库里只有源码，IPA 走 Release 附件，不占 git 历史。
+
 ## 发音从哪来（重要）
 
 ### 默认：在线获取（0.5.0 起）
