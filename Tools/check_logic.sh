@@ -17,6 +17,7 @@ xcrun swiftc \
   HanziKid/Services/AppStore.swift \
   HanziKid/Services/BaseLibrary.swift \
   HanziKid/Services/StrokeLibrary.swift \
+  HanziKid/Domain/HandwritingMatcher.swift \
   HanziKid/Domain/Scheduler.swift \
   HanziKid/Domain/StudySession.swift \
   Tools/logic_checks/main.swift \

@@ -8,8 +8,10 @@ struct HanziStrokeData {
     let outlines: [Path]
     /// 每一笔的中线，用于"顺手写出来"的逐步显示
     let medians: [Path]
+    /// 每一笔中线的点序列，已归一化到 0…1（左上原点），手写识别用
+    let medianPoints: [[CGPoint]]
 
-    static let empty = HanziStrokeData(outlines: [], medians: [])
+    static let empty = HanziStrokeData(outlines: [], medians: [], medianPoints: [])
 }
 
 // MARK: - 笔顺库（从内置 strokes.json 读取，按字懒解析）
@@ -51,7 +53,14 @@ final class StrokeLibrary {
             }
             let outlines = entry.strokes.map { SVGPath.parse($0) }
             let medians = entry.medians.map { SVGPath.polyline($0) }
-            let built = HanziStrokeData(outlines: outlines, medians: medians)
+            // 1024 网格、y 轴向上 → 归一化 0…1、左上原点（和手写画布一致）
+            let medianPoints = entry.medians.map { stroke in
+                stroke.compactMap { point -> CGPoint? in
+                    guard point.count >= 2 else { return nil }
+                    return CGPoint(x: point[0] / 1024.0, y: (900 - point[1]) / 1024.0)
+                }
+            }
+            let built = HanziStrokeData(outlines: outlines, medians: medians, medianPoints: medianPoints)
             cache[hanzi] = built
             result = built
         }

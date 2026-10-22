@@ -93,6 +93,10 @@ struct Profile: Identifiable, Codable, Equatable {
     var repeatCountRaw: Int?
     /// 没有内置音频时，是否联网从百度取发音
     var onlineAudioRaw: Bool?
+    /// 每个字要写对几遍才能换下一个（0 = 不要求手写）
+    var writesPerCharRaw: Int?
+    /// 手写区是否显示淡色范字（描红）
+    var handwritingGhostRaw: Bool?
 
     init(name: String,
          level: LearnerLevel,
@@ -117,6 +121,8 @@ struct Profile: Identifiable, Codable, Equatable {
         self.voiceGenderRaw = SpeechGender.female.rawValue
         self.repeatCountRaw = 3
         self.onlineAudioRaw = true
+        self.writesPerCharRaw = 2
+        self.handwritingGhostRaw = true
     }
 
     // MARK: 朗读设置
@@ -146,6 +152,18 @@ struct Profile: Identifiable, Codable, Equatable {
     var onlineAudio: Bool {
         get { onlineAudioRaw ?? true }
         set { onlineAudioRaw = newValue }
+    }
+
+    /// 每个字要写对几遍才能换下一个字（0 = 不要求手写，1…5）
+    var writesPerChar: Int {
+        get { min(5, max(0, writesPerCharRaw ?? 2)) }
+        set { writesPerCharRaw = min(5, max(0, newValue)) }
+    }
+
+    /// 手写区显示淡色范字（关掉就是凭记忆写，更难）
+    var handwritingGhost: Bool {
+        get { handwritingGhostRaw ?? true }
+        set { handwritingGhostRaw = newValue }
     }
 
     var level: LearnerLevel {

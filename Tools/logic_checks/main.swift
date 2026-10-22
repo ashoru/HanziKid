@@ -168,6 +168,112 @@ func runSettingsChecks() {
     check("字表里的字都会建卡", store.card(for: "天") != nil || store.card(for: "地") != nil)
 }
 
+// MARK: - 手写识别
+
+/// 折线加密（测试用：给定几个折点，插值成密集点）
+func line(_ points: [CGPoint]) -> [CGPoint] {
+    var out: [CGPoint] = [points[0]]
+    for next in points.dropFirst() {
+        let previous = out.last!
+        let distance = hypot(next.x - previous.x, next.y - previous.y)
+        let pieces = max(1, Int((distance / 0.01).rounded(.up)))
+        for k in 1..<max(2, pieces) {
+            let ratio = CGFloat(k) / CGFloat(max(2, pieces))
+            out.append(CGPoint(x: previous.x + (next.x - previous.x) * ratio,
+                               y: previous.y + (next.y - previous.y) * ratio))
+        }
+        out.append(next)
+    }
+    return out
+}
+
+func runHandwritingChecks() {
+    print("手写识别")
+
+    // 「十」：一横一竖的中线
+    let cross = HanziStrokeData(outlines: [], medians: [], medianPoints: [
+        [CGPoint(x: 0.20, y: 0.50), CGPoint(x: 0.80, y: 0.50)],
+        [CGPoint(x: 0.50, y: 0.15), CGPoint(x: 0.50, y: 0.85)]
+    ])
+    // 「口」：一个方框
+    let box = HanziStrokeData(outlines: [], medians: [], medianPoints: [
+        [CGPoint(x: 0.28, y: 0.28), CGPoint(x: 0.72, y: 0.28)],
+        [CGPoint(x: 0.28, y: 0.28), CGPoint(x: 0.28, y: 0.72)],
+        [CGPoint(x: 0.72, y: 0.28), CGPoint(x: 0.72, y: 0.72)],
+        [CGPoint(x: 0.28, y: 0.72), CGPoint(x: 0.72, y: 0.72)]
+    ])
+
+    func write(_ strokes: [[CGPoint]], width: CGFloat = 0.05) -> HandwritingSample {
+        HandwritingSample(strokes: strokes, lineWidth: width)
+    }
+
+    let honest = write([line([CGPoint(x: 0.20, y: 0.50), CGPoint(x: 0.80, y: 0.50)]),
+                        line([CGPoint(x: 0.50, y: 0.15), CGPoint(x: 0.50, y: 0.85)])])
+    let honestResult = HandwritingMatcher.check(honest, hanzi: "十", strokeData: cross)
+    check("端正地写「十」→ 判定正确", honestResult.isPass)
+    check("判定结果给出 cover / stray 分数",
+          honestResult.cover > 0.9 && honestResult.stray > 0.9 && honestResult.hasTemplate)
+
+    // 手抖：每一笔上下抖一点（±2%）
+    let shaky = write([
+        line([CGPoint(x: 0.20, y: 0.50), CGPoint(x: 0.40, y: 0.52), CGPoint(x: 0.60, y: 0.48), CGPoint(x: 0.80, y: 0.50)]),
+        line([CGPoint(x: 0.51, y: 0.15), CGPoint(x: 0.49, y: 0.50), CGPoint(x: 0.51, y: 0.85)])
+    ], width: 0.07)
+    check("手抖一点也算对", HandwritingMatcher.check(shaky, hanzi: "十", strokeData: cross).isPass)
+
+    // 写小了 + 写偏了
+    let smallAndOff = write([
+        line([CGPoint(x: 0.32, y: 0.60), CGPoint(x: 0.62, y: 0.60)]),
+        line([CGPoint(x: 0.47, y: 0.42), CGPoint(x: 0.47, y: 0.78)])
+    ], width: 0.04)
+    check("写小了、写偏了也能认出来", HandwritingMatcher.check(smallAndOff, hanzi: "十", strokeData: cross).isPass)
+
+    // 只写了一横（笔画没写全）
+    let onlyHorizontal = write([line([CGPoint(x: 0.20, y: 0.50), CGPoint(x: 0.80, y: 0.50)])])
+    check("只写一横 → 不算对", HandwritingMatcher.check(onlyHorizontal, hanzi: "十", strokeData: cross).isPass == false)
+
+    // 横写歪了（位置不对）
+    let misplaced = write([
+        line([CGPoint(x: 0.20, y: 0.74), CGPoint(x: 0.80, y: 0.74)]),
+        line([CGPoint(x: 0.50, y: 0.15), CGPoint(x: 0.50, y: 0.85)])
+    ])
+    check("笔画位置写错 → 不算对", HandwritingMatcher.check(misplaced, hanzi: "十", strokeData: cross).isPass == false)
+
+    // 写成别的字（口）
+    let boxInk = write(box.medianPoints.map { line($0) })
+    check("写成「口」去对「十」→ 不算对", HandwritingMatcher.check(boxInk, hanzi: "十", strokeData: cross).isPass == false)
+    check("写成「口」对「口」→ 判定正确", HandwritingMatcher.check(boxInk, hanzi: "口", strokeData: box).isPass)
+
+    // 乱画 / 只点一下
+    let circle = (0...40).map { k -> CGPoint in
+        let angle = CGFloat(k) / 40 * 2 * .pi
+        return CGPoint(x: 0.5 + 0.3 * cos(angle), y: 0.5 + 0.3 * sin(angle))
+    }
+    check("画个圈 → 不算对", HandwritingMatcher.check(write([line(circle)]), hanzi: "十", strokeData: cross).isPass == false)
+    check("只点一下 → 不算对", HandwritingMatcher.check(write([[CGPoint(x: 0.5, y: 0.5)]]), hanzi: "十", strokeData: cross).isPass == false)
+    check("什么都没写 → 不算对", HandwritingMatcher.check(write([]), hanzi: "十", strokeData: cross).isPass == false)
+
+    // 没有笔顺数据时不拦截
+    check("没有范字数据时不拦截（交给界面放过）",
+          HandwritingMatcher.check(honest, hanzi: "龘", strokeData: .empty).hasTemplate == false)
+
+    // 设置项
+    var profile = Profile(name: "豆豆", level: .preschool, emoji: "🐣")
+    check("默认每个字写对 2 遍", profile.writesPerChar == 2)
+    check("默认显示淡色范字", profile.handwritingGhost == true)
+    profile.writesPerChar = 8
+    check("写几遍最多 5，最少 0", profile.writesPerChar == 5)
+    profile.writesPerChar = -3
+    check("负数归零（= 不要求手写）", profile.writesPerChar == 0)
+    profile.writesPerChar = 3
+    profile.handwritingGhost = false
+    check("设置能改", profile.writesPerChar == 3 && profile.handwritingGhost == false)
+    var legacy = Profile(name: "老档案", level: .primary, emoji: "🦁")
+    legacy.writesPerCharRaw = nil
+    legacy.handwritingGhostRaw = nil
+    check("老存档缺字段时用默认值", legacy.writesPerChar == 2 && legacy.handwritingGhost)
+}
+
 print("OCR 抽字")
 check("去掉标点、拼音和重复字",
       HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
@@ -201,6 +307,8 @@ func runImporterChecks() {
     check("字库外的字进入字库索引", store.card(for: "龘") != nil)
     check("字库内的字也能取到（内存测试库为空时返回 nil 属预期）", store.card(for: "的") == nil)
 }
+
+runHandwritingChecks()
 
 MainActor.assumeIsolated {
     runPlannerChecks()

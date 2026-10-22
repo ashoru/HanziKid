@@ -10,6 +10,8 @@ struct StudyView: View {
     @State private var boardToken = 0
     @State private var readTask: Task<Void, Never>?
     @State private var isReading = false
+    /// 当前字已经写对了几遍（换一张卡就归零）
+    @State private var writesDone = 0
 
     init(profile: Profile, items: [StudyItem]) {
         self.profile = profile
@@ -34,30 +36,30 @@ struct StudyView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let item = session.current, let card = lookupCard(item.hanzi) {
                     GeometryReader { geo in
-                        // 横屏（宽 > 1000pt）左右分栏；竖屏上下排布
+                        // 左：字形（米字格 + 笔顺）；右：字形信息 + 手写区（右下角）
+                        // 横屏右栏宽一点，竖屏窄一点，结构一致
                         let isWide = geo.size.width > 1000
+                        let rightWidth = min(isWide ? 440 : 330, geo.size.width * 0.46)
                         VStack(spacing: 0) {
-                            if isWide {
-                                HStack(alignment: .center, spacing: 28) {
-                                    characterPanel(card: card)
-                                        .frame(maxWidth: .infinity)
+                            HStack(alignment: .top, spacing: isWide ? 28 : 16) {
+                                characterPanel(card: card)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                                VStack(spacing: 12) {
                                     infoPanel(card: card)
-                                        .frame(width: min(440, geo.size.width * 0.4))
+                                    handwritingPanel(card: card)
                                 }
+                                .frame(width: rightWidth)
                                 .frame(maxHeight: .infinity)
-                            } else {
-                                VStack(spacing: 14) {
-                                    characterPanel(card: card)
-                                        .frame(maxHeight: .infinity)
-                                    infoPanel(card: card, scrollable: false)
-                                }
                             }
-                            Spacer(minLength: 18)
+                            .frame(maxHeight: .infinity)
+
+                            Spacer(minLength: 14)
                             gradeBar(item: item)
                         }
-                        .padding(.horizontal, isWide ? 32 : 20)
+                        .padding(.horizontal, isWide ? 32 : 18)
                         .padding(.top, 8)
-                        .padding(.bottom, 28)
+                        .padding(.bottom, 24)
                     }
                 } else {
                     ProgressView()
@@ -66,7 +68,10 @@ struct StudyView: View {
             }
         }
         .onAppear { autoRead() }
-        .onChange(of: session.index) { _ in autoRead() }
+        .onChange(of: session.index) { _ in
+            writesDone = 0
+            autoRead()
+        }
         .onDisappear {
             readTask?.cancel()
             readTask = nil
@@ -127,6 +132,24 @@ struct StudyView: View {
             }
         }
         AudioCache.shared.prefetch(texts)
+    }
+
+    // MARK: 右下方手写区
+
+    @ViewBuilder
+    private func handwritingPanel(card: CharacterCard) -> some View {
+        HandwritingPad(hanzi: card.hanzi,
+                       required: profile.writesPerChar,
+                       done: writesDone,
+                       isLocked: isReading,
+                       showsGhost: profile.handwritingGhost) {
+            writesDone += 1
+        }
+    }
+
+    /// 手写要求满足了没有（0 遍 = 不要求）
+    private var writesRequirementMet: Bool {
+        writesDone >= profile.writesPerChar
     }
 
     // MARK: 顶部进度
@@ -225,13 +248,19 @@ struct StudyView: View {
     @ViewBuilder
     private func infoPanel(card: CharacterCard, scrollable: Bool = true) -> some View {
         if scrollable {
-            ScrollView { infoContent(card: card) }
+            // 卡片铺满右栏（内容多时内部滚动），下方留给手写区
+            ScrollView {
+                infoContent(card: card, cardStyle: false)
+                    .padding(20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .kidCard(padding: 0)
         } else {
             infoContent(card: card)
         }
     }
 
-    private func infoContent(card: CharacterCard) -> some View {
+    private func infoContent(card: CharacterCard, cardStyle: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 chip("部首 \(card.radical)")
@@ -274,7 +303,7 @@ struct StudyView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .kidCard()
+        .kidCard(padding: cardStyle ? 20 : 0)
     }
 
     private func wordButton(_ word: String) -> some View {
@@ -315,28 +344,34 @@ struct StudyView: View {
     // MARK: 底部三档自评
 
     private func gradeBar(item: StudyItem) -> some View {
-        HStack(spacing: 14) {
-            ForEach(ReviewGrade.allCases) { grade in
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        session.grade(grade, profile: profile, store: store)
+        VStack(spacing: 8) {
+            HStack(spacing: 14) {
+                ForEach(ReviewGrade.allCases) { grade in
+                    // "不会"永远能点；"会了 / 有点忘"要先把字写够遍数
+                    let blocked = !writesRequirementMet && grade != .again
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            session.grade(grade, profile: profile, store: store)
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text("\(grade.emoji) \(grade.title)")
+                                .font(.system(size: 22, weight: .semibold))
+                            Text(blocked ? "先写对 \(profile.writesPerChar - writesDone) 遍" : previewHint(grade, for: item.schedule))
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Theme.gradeColor(grade).opacity(blocked ? 0.45 : 1),
+                                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
-                } label: {
-                    VStack(spacing: 4) {
-                        Text("\(grade.emoji) \(grade.title)")
-                            .font(.system(size: 22, weight: .semibold))
-                        Text(previewHint(grade, for: item.schedule))
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Theme.gradeColor(grade), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .buttonStyle(.plain)
+                    .disabled(blocked)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.top, 8)

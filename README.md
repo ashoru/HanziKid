@@ -1,6 +1,6 @@
 # 认字啦 · HanziKid
 
-给自家孩子做的 **iPad 识字 App**。一页一个字：大字、笔顺动画、发音、组词、释义，孩子自己点「会了 / 有点忘 / 不会」，系统按记忆曲线（SM-2）安排下次复习。
+给自家孩子做的 **iPad 识字 App**。一页一个字：大字、笔顺动画、发音、组词、释义，读完在右下角**手写**一遍（本地识别），孩子自己点「会了 / 有点忘 / 不会」，系统按记忆曲线（SM-2）安排下次复习。
 
 原生 SwiftUI，**学习时完全离线、无任何第三方依赖**，两个孩子的进度各自独立。最低支持 **iOS 16.0**（iPadOS 16.3 实测目标）。
 
@@ -15,6 +15,10 @@
 | 学习页（大字号 + 自动朗读） | 朗读设置 |
 |---|---|
 | ![](docs/screenshots/11-学习页-大字号.png) | ![](docs/screenshots/12-朗读设置.png) |
+
+| 手写练习（写下这个字） | 写对了才算一遍 |
+|---|---|
+| ![](docs/screenshots/13-手写练习.png) | ![](docs/screenshots/14-写对啦.png) |
 
 产品设计文档见 [`docs/识字App设计方案.md`](docs/识字App设计方案.md)。
 
@@ -32,7 +36,8 @@
 - **字库**：内置 3506 字（3500 常用字 + 课本里出现但字频靠后的 6 字），可搜索、按拼音/笔画/字表排序、加入或移出字表
 - **课本字表**：内置《部编版一年级上册》299 字、《一年级下册》403 字（按课文顺序）、启蒙字表 96 字、四年级示例 120 字；字表可以指派给任何一个孩子
 - **自动跟读（新）**：切到一个字后自动读 3 遍，每遍之间留出可调的「跟读停顿」，再读 3 个组词（词与词之间同样停顿）；遍数、停顿、男声/女声都可按孩子单独设置
-- **家长设置**：改名、学段、每日量、语速、切换字表、清空某个孩子的进度
+- **手写练习（新）**：学习页右下角手写区，跟读完后把字写出来，本地识别对了才算一遍，写够遍数才能换字
+- **家长设置**：改名、学段、每日量、语速、切换字表、每字写几遍、清空某个孩子的进度
 
 ## 还没做（下一步）
 
@@ -82,7 +87,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 
 ```bash
 ./Tools/package_ipa.sh
-# → dist/HanziKid-<版本>(<build>)-unsigned.ipa（约 4.6 MB，在线发音版；arm64，iPad only，最低 iOS 16.0）
+# → dist/HanziKid-<版本>(<build>)-unsigned.ipa（约 4.7 MB，在线发音版；arm64，iPad only，最低 iOS 16.0）
 ```
 
 产物特征（脚本会打印校验信息，图标已内置，桌面显示为「认字啦」）：
@@ -90,7 +95,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 | 项 | 值 |
 |---|---|
 | Bundle ID | `com.tangfengjing.hanzikid` |
-| 版本 | 0.4.0（build 4） |
+| 版本 | 0.6.0（build 6） |
 | 架构 | arm64（真机） |
 | 最低系统 | iOS 16.0（16.3 可直接重签安装） |
 | 设备族 | 仅 iPad（UIDeviceFamily = 2） |
@@ -187,6 +192,37 @@ python3 Tools/fetch_audio.py --only-chars
 
 > 这些音频是百度 TTS 生成、仅供家庭自用打包的；如果以后要上架或对外分发，需要换成有授权的 TTS 服务，别直接分发这批文件。
 
+## 手写练习（0.6.0 起）
+
+学习页右下角是手写区：跟读读完，孩子照着淡色范字（描红）把这个字写出来，**系统认对了才算写了一遍**，
+攒够家长设置的遍数，「😀 会了 / 🤔 有点忘」才会亮起来——也就是不写对就换不了下一个字。
+
+设置项（家长设置 → 每个孩子）：
+
+| 设置 | 默认 | 说明 |
+|---|---|---|
+| 每个字写对几遍 | 2 遍 | 0～5；0 = 不要求手写，写不写都能换下一个字 |
+| 手写区显示淡色范字 | 开 | 关掉就是凭记忆写（更难，适合已比较熟的字） |
+
+没有 Apple Pencil 也能写（手指直接写），`PKCanvasView` 用的是 `.anyInput`。
+
+### 识别是怎么做的（完全本地，不联网、不上传笔迹）
+
+`HanziKid/Domain/HandwritingMatcher.swift`：
+
+1. 范字用该字的**笔顺中线**（`strokes.json` 里每一笔的 median，已归一化到 0…1）表示
+2. 笔迹按 PencilKit 的采样点归一化到同一个 0…1 坐标系
+3. 各算「互相有多近」两个分数（阈值 `tau = 0.042`，约等于 32 格网格里的 1.3 格）：
+   - `cover`：范字的点有多少落在笔迹附近 → 笔画写全了没有（下限 0.68）
+   - `stray`：笔迹的点有多少落在范字附近 → 有没有写成别的字 / 写飞（下限 0.78）
+4. 先按包围盒平移对齐、再按包围盒等比缩放对齐各试一次，取分数最高的那个（补偿"写偏了""写小了"）
+5. 两个分数都过线才算写对；停笔 0.9 秒后才判，避免孩子一笔一笔写的过程中乱判
+
+字库外的自造字（拍照录入、没有笔顺数据）退回「楷体字模栅格 + 膨胀容差」的粗匹配；连字模都渲染不出来时不做拦截。
+
+阈值是用真实笔顺数据做合成测试标定的（认真描/手抖 100% 通过，整体写偏 100% 通过，写错字 0%、乱画 0%、只点一下 0%）：
+`Tools/logic_checks/main.swift` 里的「手写识别」一段，跑 `./Tools/check_logic.sh` 可复现。
+
 ## 朗读相关设置（家长设置里，按孩子分别设置）
 
 | 设置 | 默认 | 说明 |
@@ -211,6 +247,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture-input
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture         # 用内置样张跑一次拍照识别
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --demo-confirm  # 识别后自动确认，验证写库
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --demo-text "龘彧春天"  # 验证"待补全"字
+xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-study --demo-write  # 自动把手写区写满，验证识别→计数→解锁
 ```
 
 ---
@@ -220,23 +257,26 @@ xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --dem
 ```
 HanziKid/
 ├─ App/            HanziKidApp.swift（App 入口，注入 AppStore）、RootView
-├─ Domain/         Models.swift（SwiftData 模型）、Scheduler.swift（SM-2 纯逻辑）、StudySession.swift（排程 + 会话）
+├─ Domain/         Models.swift（数据模型）、Scheduler.swift（SM-2 纯逻辑）、StudySession.swift（排程 + 会话）、
+│                  HandwritingMatcher.swift（手写识别：笔迹 vs 笔顺中线）
 ├─ Services/       BaseLibrary（字库播种）、StrokeLibrary（SVG 笔顺解析）、SpeechService（离线 TTS）、
 │                  OCRService（Vision 中文识别）、CardImporter（字卡入库）
 ├─ Features/
 │  ├─ Profile/     选孩子
 │  ├─ Today/       今日任务
-│  ├─ Study/       学习页 + HanziBoard（米字格 / 逐笔动画）
+│  ├─ Study/       学习页 + HanziBoard（米字格 / 逐笔动画）+ HandwritingPad（手写区）
 │  ├─ Capture/     拍照录入（选图 / 粘贴 / 勾选确认）
 │  ├─ Library/     字库浏览与字表编辑
 │  └─ Parent/      家长设置
 ├─ DesignSystem/   Theme（配色、字体、卡片样式）
 └─ Resources/      base_characters.json、strokes.json、decks.json、Assets.xcassets
-HanziKidTests/     调度器 / 排程 / 会话的单元测试（XCTest）
+HanziKidTests/     调度器 / 排程 / 会话 / 手写识别的单元测试（XCTest）
 Tools/
 ├─ build_base_library.py   从开源数据生成内置字库
 ├─ logic_checks/main.swift 无 PTY 环境下的逻辑断言
-├─ build.sh / check_logic.sh / package_ipa.sh  构建 / 逻辑测试 / 打无签名 IPA
+├─ build.sh / check_logic.sh / package_ipa.sh  构建 / 逻辑测试 / 打无签名 IPA（打包完自动同步 GitHub）
+├─ sync_github.sh                             commit + push + tag + 上传 IPA 到 Releases
+├─ bump_version.sh                            升版本号 + build，并在 CHANGELOG 顶部插入条目
 ├─ make_icon.swift                            生成 1024 图标（改图标跑这个）
 └─ raw/                    原始数据（已 gitignore，脚本会自动下载）
 ```

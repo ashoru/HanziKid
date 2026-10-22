@@ -102,6 +102,32 @@ struct ParentSettingsView: View {
                             }
                         }
 
+                        Stepper(value: Binding(
+                            get: { profile.writesPerChar },
+                            set: { newValue in store.updateProfile(profile.id) { $0.writesPerChar = newValue } }
+                        ), in: 0...5) {
+                            HStack {
+                                Text("每个字写对几遍")
+                                Spacer()
+                                Text(profile.writesPerChar == 0 ? "不要求" : "\(profile.writesPerChar) 遍")
+                                    .foregroundStyle(Theme.good)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { profile.handwritingGhost },
+                            set: { newValue in store.updateProfile(profile.id) { $0.handwritingGhost = newValue } }
+                        )) {
+                            Text("手写区显示淡色范字")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("学习页右下角有手写区：跟读结束后让孩子用 Apple Pencil（或手指）把字写出来，识别对了算一遍；写够上面的遍数，「会了 / 有点忘」才会亮起来。设成 0 就是不要求手写。")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.inkFaint)
+                        }
+
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("跟读停顿")
