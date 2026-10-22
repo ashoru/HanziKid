@@ -187,9 +187,23 @@ struct TodayView: View {
             }
 
             if plan.isEmpty {
-                Text(pendingHint)
-                    .font(.system(size: 17))
-                    .foregroundStyle(Theme.inkSoft)
+                HStack(spacing: 12) {
+                    Text(pendingHint)
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.inkSoft)
+                    Spacer(minLength: 0)
+                }
+                Button {
+                    showingCapture = true
+                } label: {
+                    Label("拍照 / 粘贴加新字", systemImage: "camera.viewfinder")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Theme.accentSoft, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
 
             HStack(spacing: 12) {
@@ -231,7 +245,7 @@ struct TodayView: View {
 
     private var pendingHint: String {
         if plan.pendingNewTotal == 0 && plan.dueReviewTotal == 0 {
-            return "字表里的字都学过了，去「字库」加几个新字吧。"
+            return "字表里的字都学过了，拍张照片或者去「字库」加几个新字吧。"
         }
         if plan.isEmpty {
             return "今天的任务已完成，可以休息啦。"

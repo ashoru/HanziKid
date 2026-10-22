@@ -52,28 +52,9 @@ enum OCRService {
             .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: "\n")
 
-        let hanzi = extractHanzi(from: text)
+        let hanzi = HanziText.extract(text)
         guard !hanzi.isEmpty else { throw OCRError.empty }
         return Outcome(text: text, hanzi: hanzi)
-    }
-
-    /// 从任意文本里抽出汉字（去重、保持顺序）
-    static func extractHanzi(from text: String) -> [String] {
-        var seen = Set<Character>()
-        var result: [String] = []
-        for character in text where isHanzi(character) {
-            if seen.insert(character).inserted {
-                result.append(String(character))
-            }
-        }
-        return result
-    }
-
-    static func isHanzi(_ character: Character) -> Bool {
-        character.unicodeScalars.contains { scalar in
-            (0x4E00...0x9FFF).contains(scalar.value)      // 基本区
-                || (0x3400...0x4DBF).contains(scalar.value) // 扩展 A
-        }
     }
 
     private static func cgOrientation(from orientation: UIImage.Orientation) -> CGImagePropertyOrientation {

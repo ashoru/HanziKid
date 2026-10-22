@@ -13,6 +13,7 @@ struct LibraryView: View {
     @State private var searchText = ""
     @State private var selection: Selection?
     @State private var onlyDeck = false
+    @State private var showingCapture = false
 
     private enum SortMode: String, CaseIterable, Identifiable {
         case pinyin = "拼音"
@@ -113,9 +114,19 @@ struct LibraryView: View {
             .navigationTitle("字库 · \(deck?.name ?? "未选择字表")（\(deckSet.count) 字）")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingCapture = true
+                    } label: {
+                        Label("录新字", systemImage: "camera.viewfinder")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showingCapture) {
+                CaptureView(profile: profile)
             }
             .sheet(item: $selection) { item in
                 detailSheet(item.card)

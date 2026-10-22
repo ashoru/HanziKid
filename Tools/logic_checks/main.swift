@@ -74,6 +74,8 @@ func runPlannerChecks() throws {
         try context.delete(model: Profile.self)
         try context.delete(model: SRSState.self)
         try context.delete(model: ReviewLog.self)
+        try context.delete(model: CharacterCard.self)
+        try context.delete(model: Deck.self)
         return context
     }
 
@@ -160,9 +162,47 @@ func runPlannerChecks() throws {
     check("会话推进到结束", session2.isFinished)
 }
 
+print("OCR 抽字")
+check("去掉标点、拼音和重复字",
+      HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
+check("纯拼音不算字", HanziText.extract("shuǐ tiān").isEmpty)
+check("空文本返回空", HanziText.extract("").isEmpty)
+check("扩展 A 区也算汉字", HanziText.extract("a1 龘㐀！") == ["龘", "㐀"])
+check("保留出现顺序", HanziText.extract("歌舞") == ["歌", "舞"])
+
+@MainActor
+func runImporterChecks() throws {
+    print("录入入库")
+    let schema = Schema([Profile.self, CharacterCard.self, Deck.self, SRSState.self, ReviewLog.self])
+    let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+    let context = ModelContext(container)
+
+    let water = CharacterCard(hanzi: "水", pinyin: "shuǐ", pinyinAll: ["shuǐ"], radical: "水",
+                              strokeCount: 4, meaning: "喝的水", words: ["喝水"], frequency: 100)
+    context.insert(water)
+    let existing = ["水": water]
+
+    let unknown = CardImporter.ensureCard(for: "龘", existing: existing, context: context)
+    check("字库外的字 → 待补全卡", unknown.needsContent && unknown.words.isEmpty && unknown.pinyin.isEmpty)
+    check("字库内的字直接复用", CardImporter.ensureCard(for: "水", existing: existing, context: context) === water)
+
+    let deck = Deck(name: "第 1 课", hanziList: [], level: .preschool)
+    context.insert(deck)
+    let added = CardImporter.add(["水", "龘", "水"], to: deck, existing: existing, context: context)
+    check("加入字表去重且保持顺序", added == 2 && deck.hanziList == ["水", "龘"])
+    check("重复加入不再计数", CardImporter.add(["水"], to: deck, existing: existing, context: context) == 0)
+
+    let newDeck = CardImporter.createDeck(named: "第 2 课", level: .preschool,
+                                          hanziList: ["天", "空"], existing: existing, context: context)
+    check("新建字表", newDeck.name == "第 2 课" && newDeck.hanziList == ["天", "空"])
+    let cards = try context.fetch(FetchDescriptor<CharacterCard>())
+    check("新字也进了字库", cards.count == 4)
+}
+
 MainActor.assumeIsolated {
     do {
         try runPlannerChecks()
+        try runImporterChecks()
     } catch {
         failures += 1
         print("  ✗ 数据库用例异常：\(error)")

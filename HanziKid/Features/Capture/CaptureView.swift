@@ -78,11 +78,11 @@ struct CaptureView: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showCamera) {
+            .fullScreenCover(isPresented: $showCamera) {
                 ImagePicker(source: .camera) { image in handle(image) }
                     .ignoresSafeArea()
             }
-            .sheet(isPresented: $showLibrary) {
+            .fullScreenCover(isPresented: $showLibrary) {
                 ImagePicker(source: .photoLibrary) { image in handle(image) }
                     .ignoresSafeArea()
             }
@@ -95,9 +95,13 @@ struct CaptureView: View {
                 #if DEBUG
                 let arguments = ProcessInfo.processInfo.arguments
                 if let index = arguments.firstIndex(of: "--demo-text"), index + 1 < arguments.count {
-                    prepare(hanzi: OCRService.extractHanzi(from: arguments[index + 1]))
+                    prepare(hanzi: HanziText.extract(arguments[index + 1]))
                 } else if arguments.contains("--demo-capture") {
                     await runOCR(on: SamplePage.render())
+                }
+                if arguments.contains("--demo-picker") {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    showLibrary = true
                 }
                 if arguments.contains("--demo-confirm"), stage == .reviewing {
                     try? await Task.sleep(nanoseconds: 300_000_000)
@@ -158,7 +162,7 @@ struct CaptureView: View {
                         )
 
                     Button {
-                        prepare(hanzi: OCRService.extractHanzi(from: typedText))
+                        prepare(hanzi: HanziText.extract(typedText))
                     } label: {
                         Text("用这些字")
                             .font(.system(size: 18, weight: .semibold))
@@ -186,7 +190,7 @@ struct CaptureView: View {
     }
 
     private var iconDisabled: Bool {
-        OCRService.extractHanzi(from: typedText).isEmpty
+        HanziText.extract(typedText).isEmpty
     }
 
     private func bigAction(title: String,
