@@ -126,6 +126,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 3. 打版本 tag `vX.Y.Z` 并推送（已存在则跳过）
 4. 建/更新 Release，说明自动取 `CHANGELOG.md` 里对应版本那段
 5. 把 `dist/HanziKid-<版本>(<build>)-unsigned.ipa` 传到 Release Assets
+   （GitHub 的 asset 名不允许括号，会自动规整成 `HanziKid-<版本>-build<build>-unsigned.ipa`，本地文件名不变）
 
 单独用：
 
@@ -133,6 +134,7 @@ xcrun simctl launch booted com.tangfengjing.hanzikid
 ./Tools/sync_github.sh --dry-run          # 只看要做什么
 ./Tools/sync_github.sh -m "fix: 修 xxx"   # 手动指定提交说明
 ./Tools/sync_github.sh --no-ipa           # 只同步源码和 tag，不传 IPA
+./Tools/sync_github.sh --retag            # 发版后又在同版本补了提交，把 tag 挪到最新提交
 SYNC_GITHUB=0 ./Tools/package_ipa.sh      # 这次打包不碰 GitHub
 ```
 
