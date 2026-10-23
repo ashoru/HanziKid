@@ -24,9 +24,9 @@
 |---|---|
 | ![](docs/screenshots/15-改名字和头像.png) | ![](docs/screenshots/16-年级与自动升年级.png) |
 
-| 字库总览（勾掉 / 拉回） |
-|---|
-| ![](docs/screenshots/17-字库总览.png) |
+| 字库总览（勾掉 / 拉回） | 今日页直达入口 | 「已掌握」里点一下拉回 |
+|---|---|---|
+| ![](docs/screenshots/17-字库总览.png) | ![](docs/screenshots/18-总览入口.png) | ![](docs/screenshots/19-已掌握可拉回.png) |
 
 产品设计文档见 [`docs/识字App设计方案.md`](docs/识字App设计方案.md)。
 
