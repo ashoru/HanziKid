@@ -3,12 +3,20 @@ import SwiftUI
 /// 字库总览：一眼看到每个字现在到哪一步，直接勾掉"完全会了"的字、把忘掉的字拉回来
 struct ProgressOverviewView: View {
     let profile: Profile
+    /// 打开时默认看哪一类（今日页点「已掌握」进来就直接筛到已掌握）
+    let initialFilter: Filter
+
+    init(profile: Profile, initialFilter: Filter = .all) {
+        self.profile = profile
+        self.initialFilter = initialFilter
+        _filter = State(initialValue: initialFilter)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
 
     @State private var scope: Scope = .deck
-    @State private var filter: Filter = .all
+    @State private var filter: Filter
     @State private var searchText = ""
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
@@ -21,7 +29,7 @@ struct ProgressOverviewView: View {
         var id: String { rawValue }
     }
 
-    private enum Filter: String, CaseIterable, Identifiable {
+    enum Filter: String, CaseIterable, Identifiable {
         case all = "全部"
         case fresh = "还没学"
         case learning = "在学"

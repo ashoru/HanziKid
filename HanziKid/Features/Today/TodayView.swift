@@ -12,6 +12,8 @@ struct TodayView: View {
     @State private var sessionItems: [StudyItem] = []
     @State private var showingSettings = false
     @State private var showingLibrary = false
+    @State private var showingOverview = false
+    @State private var overviewFilter: ProgressOverviewView.Filter = .all
     @State private var showingCapture = false
 
     private var myStates: [SRSState] { store.states(for: profile.id) }
@@ -63,6 +65,12 @@ struct TodayView: View {
                         Label("录新字", systemImage: "camera.viewfinder")
                     }
                     Button {
+                        overviewFilter = .all
+                        showingOverview = true
+                    } label: {
+                        Label("字库总览", systemImage: "checklist")
+                    }
+                    Button {
                         showingLibrary = true
                     } label: {
                         Label("字库", systemImage: "character.book.closed")
@@ -76,6 +84,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showingLibrary) {
                 LibraryView(profile: profile)
+            }
+            .sheet(isPresented: $showingOverview) {
+                ProgressOverviewView(profile: profile, initialFilter: overviewFilter)
             }
             .sheet(isPresented: $showingCapture) {
                 CaptureView(profile: profile)
@@ -117,6 +128,10 @@ struct TodayView: View {
             store.updateProfile(profile.id) { $0.activeDeckName = name }
         }
         if arguments.contains("--demo-library") { showingLibrary = true }
+        if arguments.contains("--demo-overview") {
+            overviewFilter = arguments.contains("--demo-overview-mastered") ? .mastered : .all
+            showingOverview = true
+        }
         if arguments.contains("--demo-capture") || arguments.contains("--demo-capture-input") {
             showingCapture = true
         }
@@ -267,8 +282,22 @@ struct TodayView: View {
 
     private var statsRow: some View {
         HStack(spacing: 14) {
-            statChip(title: "学习中", value: learningCount, icon: "book.fill", tint: Theme.accent)
-            statChip(title: "已掌握", value: masteredCount, icon: "checkmark.seal.fill", tint: Theme.good)
+            Button {
+                overviewFilter = .learning
+                showingOverview = true
+            } label: {
+                statChip(title: "学习中", value: learningCount, icon: "book.fill", tint: Theme.accent)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                overviewFilter = .mastered
+                showingOverview = true
+            } label: {
+                statChip(title: "已掌握", value: masteredCount, icon: "checkmark.seal.fill", tint: Theme.good)
+            }
+            .buttonStyle(.plain)
+
             statChip(title: "今天练过", value: todayLogCount, icon: "flame.fill", tint: Theme.hard)
         }
     }
