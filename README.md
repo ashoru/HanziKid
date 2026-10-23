@@ -20,13 +20,17 @@
 |---|---|
 | ![](docs/screenshots/13-手写练习.png) | ![](docs/screenshots/14-写对啦.png) |
 
+| 改名字 / 换头像 |
+|---|
+| ![](docs/screenshots/15-改名字和头像.png) |
+
 产品设计文档见 [`docs/识字App设计方案.md`](docs/识字App设计方案.md)。
 
 ---
 
 ## 现在能做什么（M1 + 拍照录入，已跑通）
 
-- **两个档案**：豆豆（幼儿园中班）/ 果果（小学四年级），字卡内容共享，学习进度和每日量各自独立
+- **两个档案**：默认「豆豆」（幼儿园中班）/「果果」（小学四年级），**名字和头像都能改**（选人页卡片右上角铅笔），字卡内容共享，学习进度和每日量各自独立
 - **今日任务**：到期复习 + 新字交替排列，做完即止（不鼓励刷屏）
 - **一页一字**：拼音（点击发音）、米字格 + 逐笔写出的笔顺动画、部首/笔画、组词（点击发音）、释义
 - **三档自评**：会了 / 有点忘 / 不会，实时显示「下次什么时候再见」
@@ -223,6 +227,15 @@ python3 Tools/fetch_audio.py --only-chars
 阈值是用真实笔顺数据做合成测试标定的（认真描/手抖 100% 通过，整体写偏 100% 通过，写错字 0%、乱画 0%、只点一下 0%）：
 `Tools/logic_checks/main.swift` 里的「手写识别」一段，跑 `./Tools/check_logic.sh` 可复现。
 
+## 档案：改名字 / 换头像
+
+默认两个档案叫「豆豆」「果果」，都可以改成自家孩子的名字：
+
+- 选人页：每张卡片右上角的**铅笔**按钮 → 改名字（最多 12 字）+ 选头像（20 个预设 emoji，也能自己打一个）
+- 家长设置：每个孩子那一节的第一行「名字与头像」→ 同一个编辑页
+- 名字留空不能保存；改名字**不影响学习进度**（进度跟着档案 ID 走），另一个孩子也不受影响
+- 头像和名字会显示在选人页、今日任务页顶部、家长设置里
+
 ## 朗读相关设置（家长设置里，按孩子分别设置）
 
 | 设置 | 默认 | 说明 |
@@ -248,6 +261,8 @@ xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture      
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --demo-confirm  # 识别后自动确认，验证写库
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-capture --demo-text "龘彧春天"  # 验证"待补全"字
 xcrun simctl launch booted com.tangfengjing.hanzikid --demo --demo-study --demo-write  # 自动把手写区写满，验证识别→计数→解锁
+xcrun simctl launch booted com.tangfengjing.hanzikid --demo-edit-profile  # 直接打开第一个孩子的「改名字/换头像」
+xcrun simctl launch booted com.tangfengjing.hanzikid --demo-rename        # 自动改名换头像，验证写盘
 ```
 
 ---

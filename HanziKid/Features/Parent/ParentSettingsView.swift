@@ -9,6 +9,8 @@ struct ParentSettingsView: View {
     private var decks: [Deck] { store.decks }
 
     @State private var resetTarget: Profile?
+    /// 正在编辑名字 / 头像的档案
+    @State private var editingProfile: Profile?
 
     var body: some View {
         NavigationStack {
@@ -21,15 +23,19 @@ struct ParentSettingsView: View {
 
                 ForEach(profiles) { profile in
                     Section {
-                        HStack {
-                            Text("名字")
-                            Spacer()
-                            TextField("名字", text: Binding(
-                                get: { profile.name },
-                                set: { newValue in store.updateProfile(profile.id) { $0.name = newValue } }
-                            ))
-                            .multilineTextAlignment(.trailing)
-                            .frame(maxWidth: 180)
+                        Button {
+                            editingProfile = profile
+                        } label: {
+                            HStack {
+                                Text("名字与头像")
+                                    .foregroundStyle(Theme.ink)
+                                Spacer()
+                                Text("\(profile.emoji) \(profile.name)")
+                                    .foregroundStyle(Theme.accent)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.inkFaint)
+                            }
                         }
 
                         Picker("学段", selection: Binding(
@@ -209,6 +215,15 @@ struct ParentSettingsView: View {
                     Text("内容来源均为开源数据，仅供家庭学习使用。组词与释义后续会接入更严谨的校对流程。")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.inkFaint)
+                }
+            }
+            .sheet(item: $editingProfile) { profile in
+                ProfileEditSheet(profile: profile) { name, emoji in
+                    store.updateProfile(profile.id) {
+                        $0.name = name
+                        $0.emoji = emoji
+                    }
+                    store.saveNow()
                 }
             }
             .navigationTitle("家长设置")

@@ -161,6 +161,18 @@ func runSettingsChecks() {
     check("老存档缺字段时用默认值",
           legacyCopy.autoRead && legacyCopy.repeatCount == 3 && legacyCopy.voiceGender == .female)
 
+    // 改名 / 换头像（豆豆、果果可以自定义）
+    let named = AppStore(storage: .memory)
+    let first = named.profiles[0]
+    named.updateProfile(first.id) {
+        $0.name = "小雨"
+        $0.emoji = "🐼"
+    }
+    check("档案可以改名", named.profile(id: first.id)?.name == "小雨")
+    check("档案可以换头像", named.profile(id: first.id)?.emoji == "🐼")
+    check("改名不影响另一个孩子", named.profiles.count == 2 && named.profiles[1].name == "果果")
+    check("改名不动学习进度", named.states(for: first.id).isEmpty && named.profile(id: first.id)?.id == first.id)
+
     let store = AppStore(storage: .memory)
     let made = store.createDeck(named: "一年级上册", level: .preschool, hanziList: ["天", "地"])
     let allForPrimary = store.decks(for: .primary)
