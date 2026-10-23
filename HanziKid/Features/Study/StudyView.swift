@@ -39,25 +39,28 @@ struct StudyView: View {
                         // 左：字形（米字格 + 笔顺）；右：字形信息 + 手写区（右下角）
                         // 横屏右栏宽一点，竖屏窄一点，结构一致
                         let isWide = geo.size.width > 1000
-                        let rightWidth = min(isWide ? 440 : 330, geo.size.width * 0.46)
+                        // 右栏：手写区占大头，组词/释义只留上面一条（内部可滚动）
+                        let rightWidth = min(isWide ? 560 : 420, geo.size.width * (isWide ? 0.5 : 0.5))
+                        let infoMaxHeight = max(130, geo.size.height * (isWide ? 0.30 : 0.34))
                         VStack(spacing: 0) {
-                            HStack(alignment: .top, spacing: isWide ? 28 : 16) {
+                            HStack(alignment: .top, spacing: isWide ? 22 : 12) {
                                 characterPanel(card: card)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                                VStack(spacing: 12) {
+                                VStack(spacing: 10) {
                                     infoPanel(card: card)
+                                        .frame(maxHeight: infoMaxHeight)
                                     handwritingPanel(card: card)
+                                        .frame(maxHeight: .infinity)
                                 }
                                 .frame(width: rightWidth)
-                                .frame(maxHeight: .infinity)
                             }
                             .frame(maxHeight: .infinity)
 
-                            Spacer(minLength: 14)
+                            Spacer(minLength: 10)
                             gradeBar(item: item)
                         }
-                        .padding(.horizontal, isWide ? 32 : 18)
+                        .padding(.horizontal, isWide ? 28 : 14)
                         .padding(.top, 8)
                         .padding(.bottom, 24)
                     }
@@ -228,15 +231,17 @@ struct StudyView: View {
 
     private func smallAction(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 22))
+                    .font(.system(size: 20))
                 Text(title)
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(size: 20, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .foregroundStyle(Theme.inkSoft)
-            .padding(.horizontal, 26)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
             .background(Theme.card, in: Capsule())
             .shadow(color: Theme.shadow, radius: 8, y: 3)
         }
@@ -248,19 +253,29 @@ struct StudyView: View {
     @ViewBuilder
     private func infoPanel(card: CharacterCard, scrollable: Bool = true) -> some View {
         if scrollable {
-            // 卡片铺满右栏（内容多时内部滚动），下方留给手写区
-            ScrollView {
-                infoContent(card: card, cardStyle: false)
-                    .padding(20)
+            // 内容不多时卡片贴着内容（不留大块空白），内容多时内部滚动
+            ViewThatFits(in: .vertical) {
+                infoBody(card: card).kidCard()
+                ScrollView {
+                    infoBody(card: card).padding(20)
+                }
+                .kidCard(padding: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .kidCard(padding: 0)
         } else {
             infoContent(card: card)
         }
     }
 
+    @ViewBuilder
     private func infoContent(card: CharacterCard, cardStyle: Bool = true) -> some View {
+        if cardStyle {
+            infoBody(card: card).kidCard()
+        } else {
+            infoBody(card: card)
+        }
+    }
+
+    private func infoBody(card: CharacterCard) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 chip("部首 \(card.radical)")
@@ -303,7 +318,6 @@ struct StudyView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .kidCard(padding: cardStyle ? 20 : 0)
     }
 
     private func wordButton(_ word: String) -> some View {

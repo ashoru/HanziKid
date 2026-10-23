@@ -22,29 +22,28 @@ struct HandwritingPad: View {
     @State private var clearToken = 0
     @State private var verdict: HandwritingResult?
     @State private var attempts = 0
-    @State private var checkTask: Task<Void, Never>?
     @State private var celebrating = false
+    @State private var toast: String?
     @State private var padSide: CGFloat = 300
 
     private var strokeData: HanziStrokeData { StrokeLibrary.shared.data(for: hanzi) }
     private var isComplete: Bool { required > 0 && done >= required }
+    /// 有没有写出东西（决定「写好了」按钮能不能点）
+    private var hasInk: Bool { !drawing.strokes.isEmpty }
+    private var canCheck: Bool { hasInk && !isLocked && !celebrating }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             header
             pad
             footer
         }
-        .padding(14)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: Theme.shadow, radius: 10, y: 3)
+        .padding(12)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Theme.shadow, radius: 12, y: 4)
         .onChange(of: hanzi) { _ in
             reset()
         }
-        .onChange(of: isLocked) { locked in
-            if locked { cancelPending() }
-        }
-        .onDisappear { checkTask?.cancel() }
         .task(id: TaskKey(hanzi: hanzi, locked: isLocked)) {
             await runDemoInkIfNeeded()
         }
@@ -108,8 +107,8 @@ struct HandwritingPad: View {
 
                 if celebrating {
                     celebrateOverlay
-                } else if let verdict, !verdict.isPass, attempts > 0 {
-                    retryHint(verdict)
+                } else if let toast {
+                    hintBanner(toast)
                 }
             }
             .frame(width: side, height: side)
@@ -118,7 +117,7 @@ struct HandwritingPad: View {
             .onChange(of: side) { newSide in padSide = newSide }
         }
         .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var lockedOverlay: some View {
@@ -155,19 +154,20 @@ struct HandwritingPad: View {
         .allowsHitTesting(false)
     }
 
-    private func retryHint(_ result: HandwritingResult) -> some View {
+    /// 判定没通过时的提示（写在板子下方，不挡笔迹）
+    private func hintBanner(_ text: String) -> some View {
         VStack {
             Spacer()
             HStack(spacing: 8) {
                 Image(systemName: "arrow.uturn.left.circle.fill")
-                Text(result.cover < 0.5 ? "笔画还没写全，再写一次" : "和范字不太像，再写一次")
+                Text(text)
             }
-            .font(.system(size: 16, weight: .medium))
+            .font(.system(size: 17, weight: .medium))
             .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(Theme.again.opacity(0.92), in: Capsule())
-            .padding(.bottom, 10)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Theme.again.opacity(0.94), in: Capsule())
+            .padding(.bottom, 12)
         }
         .allowsHitTesting(false)
     }
@@ -175,62 +175,66 @@ struct HandwritingPad: View {
     // MARK: 底部按钮 + 提示
 
     private var footer: some View {
-        HStack(spacing: 10) {
-            Button {
-                clear()
-            } label: {
-                Label("擦掉重写", systemImage: "eraser.line.dashed")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Theme.inkSoft)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Theme.paperDeep, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(isLocked || celebrating)
-
-            Spacer(minLength: 4)
-
+        VStack(spacing: 8) {
             if required > 0 {
-                Text(isComplete ? "可以换下一个字了" : "写对 \(max(0, required - done)) 遍再换下一个字")
-                    .font(.system(size: 14))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                Text(isComplete ? "这个字写好啦，可以换下一个" : "写对 \(max(0, required - done)) 遍就能换下一个字")
+                    .font(.system(size: 13))
                     .foregroundStyle(isComplete ? Theme.good : Theme.inkFaint)
-            } else {
-                Text("写对了会打勾")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.inkFaint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    clear()
+                } label: {
+                    Image(systemName: "eraser.line.dashed")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(Theme.inkSoft)
+                        .frame(width: 56, height: 54)
+                        .background(Theme.paperDeep, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isLocked || celebrating)
+                .accessibilityLabel("擦掉重写")
+
+                Button {
+                    check()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: canCheck ? "checkmark.seal.fill" : "hand.draw.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                        Text(canCheck ? "写好了，看看对不对" : "先写，再点这里")
+                            .font(.system(size: 19, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(canCheck ? Theme.accent : Theme.inkFaint.opacity(0.4),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canCheck)
             }
         }
     }
 
     // MARK: 识别
 
+    /// 笔迹变化只记录，不自动判定 —— 必须由小朋友点「写好了」才认
     private func handleDrawingChanged(_ newDrawing: PKDrawing) {
         drawing = newDrawing
         guard !isLocked, !celebrating else { return }
-        verdict = nil
-        scheduleCheck()
+        if verdict != nil { verdict = nil }
     }
 
-    private func scheduleCheck() {
-        checkTask?.cancel()
-        checkTask = Task { @MainActor in
-            // 停笔 0.9 秒再判，避免孩子一笔一笔写的过程中乱判
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            guard !Task.isCancelled else { return }
-            evaluate()
-        }
-    }
-
-    private func cancelPending() {
-        checkTask?.cancel()
-        checkTask = nil
+    /// 「写好了」按钮
+    private func check() {
+        guard canCheck else { return }
+        evaluate()
     }
 
     private func evaluate() {
-        guard !isLocked, !celebrating else { return }
+        guard canCheck else { return }
         let sample = makeSample()
         // 至少要有两笔中的一个有效笔画才判定（单笔画字如「一」点数本来就不多）
         guard sample.strokes.contains(where: { $0.count >= 2 }) else { return }
@@ -249,6 +253,11 @@ struct HandwritingPad: View {
             pass(praise: true)
         } else {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            if result.cover < 0.5 {
+                toast = "笔画还没写全，再补几笔"
+            } else {
+                toast = "和范字不太像，擦掉重写一次"
+            }
         }
     }
 
@@ -285,8 +294,8 @@ struct HandwritingPad: View {
     }
 
     private func clear() {
-        cancelPending()
         verdict = nil
+        toast = nil
         drawing = PKDrawing()
         clearToken += 1
     }
@@ -332,7 +341,9 @@ struct HandwritingPad: View {
                 pkStrokes.append(PKStroke(ink: PKInk(.pen, color: UIColor(Theme.ink)), path: path))
             }
             handleDrawingChanged(PKDrawing(strokes: pkStrokes))
-            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            check()      // 手动判定的流程也一起验证
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
             guard !Task.isCancelled else { return }
         }
     }
