@@ -138,7 +138,7 @@ struct TodayView: View {
                 Text("\(profile.name)，今天也来认字吧")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Theme.ink)
-                Text("\(profile.level.emoji) \(profile.level.title) · 已掌握 \(masteredCount) 个")
+                Text("\(profile.level.emoji) \(profile.gradeTitle) · 已掌握 \(masteredCount) 个")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.inkSoft)
             }

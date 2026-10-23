@@ -38,17 +38,52 @@ struct ParentSettingsView: View {
                             }
                         }
 
-                        Picker("学段", selection: Binding(
-                            get: { profile.level },
+                        Picker("年级", selection: Binding(
+                            get: { profile.grade() },
                             set: { newValue in
-                                store.updateProfile(profile.id) {
-                                    $0.level = newValue
-                                    $0.speechRate = newValue.defaultSpeechRate
-                                }
+                                store.updateProfile(profile.id) { $0.setGrade(newValue) }
                             }
                         )) {
-                            ForEach(LearnerLevel.allCases) { level in
-                                Text(level.title).tag(level)
+                            ForEach(SchoolGrade.all, id: \.self) { index in
+                                Text(SchoolGrade.title(index)).tag(index)
+                            }
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { profile.autoGrade },
+                            set: { newValue in store.updateProfile(profile.id) { $0.autoGrade = newValue } }
+                        )) {
+                            Text("到时间自动升年级")
+                        }
+
+                        if profile.autoGrade {
+                            Picker("升年级时间", selection: Binding(
+                                get: { profile.gradeMonth },
+                                set: { newValue in store.updateProfile(profile.id) { $0.gradeMonth = newValue } }
+                            )) {
+                                ForEach(1...12, id: \.self) { month in
+                                    Text("每年 \(month) 月").tag(month)
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                if profile.didAutoUpgrade() {
+                                    Text("已按时间自动升级：设置的是 \(SchoolGrade.title(profile.gradeBase))，现在是 \(profile.gradeTitle)")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.good)
+                                }
+                                if let next = profile.nextGradeDate() {
+                                    Text("下一次 \(Self.monthDayText(next)) 自动升到 \(profile.nextGradeTitle())")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.inkFaint)
+                                } else {
+                                    Text("已经是最高年级（六年级），不再自动升")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.inkFaint)
+                                }
+                                Text("年级决定学习页显示的内容量（幼儿园组词 3 个、小学 6 个），升年级会自动切换；每天学多少仍然按上面单独设置。")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.inkFaint)
                             }
                         }
 
@@ -200,7 +235,7 @@ struct ParentSettingsView: View {
                     } header: {
                         Text("\(profile.emoji) \(profile.name)")
                     } footer: {
-                        Text("今天剩余：新字 \(profile.effectiveNewLimit()) 个 · 复习 \(profile.effectiveReviewLimit()) 个")
+                        Text("\(profile.emoji) \(profile.name) · \(profile.gradeTitle) · 今天剩余：新字 \(profile.effectiveNewLimit()) 个 · 复习 \(profile.effectiveReviewLimit()) 个")
                             .font(.system(size: 12))
                     }
                 }
@@ -246,6 +281,13 @@ struct ParentSettingsView: View {
                 Text("会删除该孩子所有字的复习记录，字库和字表不受影响。")
             }
         }
+    }
+
+    private static func monthDayText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy 年 M 月 d 日"
+        return formatter.string(from: date)
     }
 
     private func reset(_ profile: Profile) {

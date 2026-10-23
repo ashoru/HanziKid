@@ -286,6 +286,77 @@ func runHandwritingChecks() {
     check("老存档缺字段时用默认值", legacy.writesPerChar == 2 && legacy.handwritingGhost)
 }
 
+// MARK: - 年级：自定义 + 按时间自动升
+
+func runGradeChecks() {
+    print("年级与自动升年级")
+    func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
+    check("年级名称：幼儿园小班 / 中班 / 大班",
+          SchoolGrade.title(0) == "幼儿园小班" && SchoolGrade.title(1) == "幼儿园中班" && SchoolGrade.title(2) == "幼儿园大班")
+    check("年级名称：一到六年级",
+          SchoolGrade.title(3) == "一年级" && SchoolGrade.title(6) == "四年级" && SchoolGrade.title(8) == "六年级")
+    check("学段换算：幼儿园 3 档 / 小学 6 档",
+          SchoolGrade.level(for: 2) == .preschool && SchoolGrade.level(for: 3) == .primary)
+    check("新建档案默认年级：幼儿园中班 / 四年级",
+          Profile(name: "A", level: .preschool, emoji: "🐣").grade() == 1
+          && Profile(name: "B", level: .primary, emoji: "🦁").grade() == 6)
+
+    // 家长手动选年级 → 从最近一个升年级日（默认 9 月）开始算
+    var kid = Profile(name: "小星星", level: .preschool, emoji: "🦄")
+    kid.setGrade(3, on: date(2026, 3, 10), calendar: calendar)   // 一年级
+    check("改年级后立刻生效", kid.grade(on: date(2026, 3, 10), calendar: calendar) == 3)
+    check("还没到 9 月不升", kid.grade(on: date(2026, 8, 31), calendar: calendar) == 3)
+    check("到 9 月 1 日自动升到二年级", kid.grade(on: date(2026, 9, 1), calendar: calendar) == 4)
+    check("再过一年升到三年级", kid.grade(on: date(2027, 9, 2), calendar: calendar) == 5)
+    check("升年级后学段跟着变（一年级 → .primary）", kid.level == .primary)
+    check("下次升年级是 2026-09-01", {
+        guard let next = kid.nextGradeDate(on: date(2026, 3, 10), calendar: calendar) else { return false }
+        return calendar.dateComponents([.year, .month, .day], from: next) == DateComponents(year: 2026, month: 9, day: 1)
+    }())
+    check("下次升到「二年级」", kid.nextGradeTitle(on: date(2026, 3, 10), calendar: calendar) == "二年级")
+    check("没到升年级日时 didAutoUpgrade 是 false", kid.didAutoUpgrade(on: date(2026, 3, 10), calendar: calendar) == false)
+    check("过了升年级日 didAutoUpgrade 是 true", kid.didAutoUpgrade(on: date(2026, 9, 2), calendar: calendar))
+
+    // 关掉自动升年级
+    var frozen = Profile(name: "冻结", level: .preschool, emoji: "🐣")
+    frozen.setGrade(3, on: date(2026, 3, 10), calendar: calendar)
+    frozen.autoGrade = false
+    check("关掉自动升年级后一直是同一个年级",
+          frozen.grade(on: date(2030, 12, 1), calendar: calendar) == 3)
+
+    // 自定义升年级月份（比如 8 月）
+    var august = Profile(name: "八月升", level: .preschool, emoji: "🐣")
+    august.setGrade(2, on: date(2026, 3, 10), calendar: calendar)
+    august.gradeMonth = 8
+    check("自定义 8 月升年级：7 月还没升", august.grade(on: date(2026, 7, 31), calendar: calendar) == 2)
+    check("自定义 8 月升年级：8 月 1 日升到大班", august.grade(on: date(2026, 8, 1), calendar: calendar) == 3)
+
+    // 上限与老存档
+    var top = Profile(name: "六年级", level: .primary, emoji: "🦁")
+    top.setGrade(8, on: date(2020, 1, 1), calendar: calendar)
+    check("六年级不再往上加", top.grade(on: date(2030, 1, 1), calendar: calendar) == 8)
+    check("六年级没有下次升年级", top.nextGradeDate(on: date(2026, 3, 10), calendar: calendar) == nil)
+
+    var legacy = Profile(name: "老档案", level: .primary, emoji: "🦁")
+    legacy.gradeRaw = nil
+    legacy.gradeAnchorRaw = nil
+    legacy.gradeMonthRaw = nil
+    legacy.autoGradeRaw = nil
+    check("老存档（只有学段）按学段推断年级", legacy.gradeBase == 6 && legacy.autoGrade)
+    check("老存档不设锚点也能按年升", legacy.grade(on: date(2035, 1, 1), calendar: calendar) >= 6)
+
+    // 存盘往返
+    let encoded = try! JSONEncoder().encode(kid)
+    let decoded = try! JSONDecoder().decode(Profile.self, from: encoded)
+    check("年级设置能存能读", decoded.gradeRaw == kid.gradeRaw
+          && decoded.gradeAnchorRaw == kid.gradeAnchorRaw
+          && decoded.gradeMonth == kid.gradeMonth
+          && decoded.autoGrade == kid.autoGrade)
+}
+
 print("OCR 抽字")
 check("去掉标点、拼音和重复字",
       HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
@@ -321,6 +392,7 @@ func runImporterChecks() {
 }
 
 runHandwritingChecks()
+runGradeChecks()
 
 MainActor.assumeIsolated {
     runPlannerChecks()

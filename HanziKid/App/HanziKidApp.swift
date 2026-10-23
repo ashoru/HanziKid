@@ -45,5 +45,20 @@ struct RootView: View {
         }
         .background(Theme.paper.ignoresSafeArea())
         .preferredColorScheme(.light)
+        .task {
+            #if DEBUG
+            // 冒烟测试 / 截图：--demo-auto-grade 造一个"两年前上中班"的档案，验证自动升年级
+            if ProcessInfo.processInfo.arguments.contains("--demo-auto-grade"),
+               let first = store.profiles.first {
+                store.updateProfile(first.id) {
+                    $0.gradeRaw = 1                 // 设置时是幼儿园中班
+                    $0.gradeAnchorRaw = "2024-09"   // 2024 年 9 月那个学年
+                    $0.autoGrade = true
+                    $0.gradeMonth = 9
+                }
+                store.saveNow()
+            }
+            #endif
+        }
     }
 }

@@ -85,7 +85,7 @@ struct ProfilePickerView: View {
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(Theme.ink)
 
-                Text(profile.level.title)
+                Text(profile.gradeTitle)
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.inkSoft)
                     .padding(.horizontal, 12)

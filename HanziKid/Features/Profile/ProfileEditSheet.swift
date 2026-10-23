@@ -46,7 +46,7 @@ struct ProfileEditSheet: View {
                             Text(trimmedName.isEmpty ? "还没起名字" : trimmedName)
                                 .font(.system(size: 26, weight: .bold))
                                 .foregroundStyle(trimmedName.isEmpty ? Theme.inkFaint : Theme.ink)
-                            Text(profile.level.title)
+                            Text(profile.gradeTitle)
                                 .font(.system(size: 14))
                                 .foregroundStyle(Theme.inkSoft)
                         }

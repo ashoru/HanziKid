@@ -54,6 +54,51 @@ enum LearnerLevel: Int, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - 年级（幼儿园小班 … 六年级，可自定义 + 按时间自动升）
+
+/// 年级用 0…8 的序号表示，比 LearnerLevel 细一档；
+/// 内容层面仍然只分「幼儿园 / 小学」两个学段（LearnerLevel），由年级换算得出。
+enum SchoolGrade {
+    /// 0 = 幼儿园小班 … 8 = 六年级
+    static let all: [Int] = Array(0...8)
+    static let minIndex = 0
+    static let maxIndex = 8
+
+    private static let kindergarten = ["小班", "中班", "大班"]
+    private static let primary = ["一", "二", "三", "四", "五", "六"]
+
+    /// 完整名称：幼儿园中班 / 四年级
+    static func title(_ index: Int) -> String {
+        let value = clamp(index)
+        if value <= 2 { return "幼儿园" + kindergarten[value] }
+        return primary[value - 3] + "年级"
+    }
+
+    /// 短名称：中班 / 四年级
+    static func shortTitle(_ index: Int) -> String {
+        let value = clamp(index)
+        if value <= 2 { return kindergarten[value] }
+        return primary[value - 3] + "年级"
+    }
+
+    /// 内容学段：幼儿园（0…2）/ 小学（3…8）
+    static func level(for index: Int) -> LearnerLevel {
+        clamp(index) <= 2 ? .preschool : .primary
+    }
+
+    /// 该学段的默认年级（新建档案用）
+    static func defaultIndex(for level: LearnerLevel) -> Int {
+        switch level {
+        case .preschool: return 1   // 幼儿园中班
+        case .primary: return 6     // 四年级（3=一、4=二、5=三、6=四）
+        }
+    }
+
+    static func clamp(_ index: Int) -> Int {
+        min(maxIndex, max(minIndex, index))
+    }
+}
+
 /// 声音性别（只做二选一，具体音色由系统决定）
 enum SpeechGender: String, CaseIterable, Identifiable, Codable {
     case female
@@ -98,6 +143,16 @@ struct Profile: Identifiable, Codable, Equatable {
     /// 手写区是否显示淡色范字（描红）
     var handwritingGhostRaw: Bool?
 
+    // 年级（可选字段，老存档按 levelRaw 推断）
+    /// 基准年级：0 = 幼儿园小班 … 8 = 六年级（家长设置那一刻的年级）
+    var gradeRaw: Int?
+    /// 基准年级对应的「升年级日」（yyyy-MM-dd），为空则按"最近一个升年级日"处理
+    var gradeAnchorRaw: String?
+    /// 每年几月升年级（1…12，默认 9）
+    var gradeMonthRaw: Int?
+    /// 到时间自动升年级
+    var autoGradeRaw: Bool?
+
     init(name: String,
          level: LearnerLevel,
          emoji: String,
@@ -123,6 +178,10 @@ struct Profile: Identifiable, Codable, Equatable {
         self.onlineAudioRaw = true
         self.writesPerCharRaw = 2
         self.handwritingGhostRaw = true
+        self.gradeRaw = SchoolGrade.defaultIndex(for: level)
+        self.gradeAnchorRaw = nil
+        self.gradeMonthRaw = 9
+        self.autoGradeRaw = true
     }
 
     // MARK: 朗读设置
@@ -166,9 +225,112 @@ struct Profile: Identifiable, Codable, Equatable {
         set { handwritingGhostRaw = newValue }
     }
 
-    var level: LearnerLevel {
-        get { LearnerLevel(rawValue: levelRaw) ?? .preschool }
-        set { levelRaw = newValue.rawValue }
+    /// 内容学段：由当前年级换算（升年级跨入小学后自动变成 .primary）
+    var level: LearnerLevel { SchoolGrade.level(for: grade()) }
+
+    // MARK: 年级
+
+    /// 每年几月升年级（中国学年 9 月开学）
+    var gradeMonth: Int {
+        get { min(12, max(1, gradeMonthRaw ?? 9)) }
+        set { gradeMonthRaw = min(12, max(1, newValue)) }
+    }
+
+    /// 到时间自动升年级
+    var autoGrade: Bool {
+        get { autoGradeRaw ?? true }
+        set { autoGradeRaw = newValue }
+    }
+
+    /// 基准年级（家长设置的那个年级；老存档按学段推断）
+    var gradeBase: Int {
+        if let raw = gradeRaw { return SchoolGrade.clamp(raw) }
+        return SchoolGrade.defaultIndex(for: LearnerLevel(rawValue: levelRaw) ?? .preschool)
+    }
+
+    /// 基准年级的起始日（升年级日的那个月 1 号）。只存「年-月」，避免时区把日期挪一天
+    private func gradeAnchor(calendar: Calendar) -> Date? {
+        guard let text = gradeAnchorRaw else { return nil }
+        let parts = text.split(separator: "-")
+        guard parts.count >= 2, let year = Int(parts[0]), let month = Int(parts[1]) else { return nil }
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = 1
+        return calendar.date(from: components)
+    }
+
+    /// 当前年级（自动升年级后）；0 = 幼儿园小班 … 8 = 六年级
+    func grade(on date: Date = Date(), calendar: Calendar = .current) -> Int {
+        let base = gradeBase
+        guard autoGrade else { return base }
+        let anchor = gradeAnchor(calendar: calendar)
+            ?? Profile.gradeBoundary(onOrBefore: date, month: gradeMonth, calendar: calendar)
+        let steps = Profile.gradeSteps(after: anchor, until: date, month: gradeMonth, calendar: calendar)
+        return SchoolGrade.clamp(base + steps)
+    }
+
+    var gradeTitle: String { SchoolGrade.title(grade()) }
+
+    var gradeShortTitle: String { SchoolGrade.shortTitle(grade()) }
+
+    /// 下次升年级是哪天（已到最高年级则为 nil）
+    func nextGradeDate(on date: Date = Date(), calendar: Calendar = .current) -> Date? {
+        guard grade(on: date, calendar: calendar) < SchoolGrade.maxIndex else { return nil }
+        let boundary = Profile.gradeBoundary(onOrBefore: date, month: gradeMonth, calendar: calendar)
+        var components = calendar.dateComponents([.year, .month], from: boundary)
+        components.year = (components.year ?? 0) + 1
+        return calendar.date(from: components)
+    }
+
+    /// 下次升到几年级（文案用）
+    func nextGradeTitle(on date: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let next = nextGradeDate(on: date, calendar: calendar) else { return gradeTitle }
+        return SchoolGrade.title(grade(on: next, calendar: calendar))
+    }
+
+    /// 家长手动改年级：基准年级改为当前，并从"最近一个升年级日"重新计数
+    mutating func setGrade(_ index: Int, on date: Date = Date(), calendar: Calendar = .current) {
+        gradeRaw = SchoolGrade.clamp(index)
+        let boundary = Profile.gradeBoundary(onOrBefore: date, month: gradeMonth, calendar: calendar)
+        let parts = calendar.dateComponents([.year, .month], from: boundary)
+        gradeAnchorRaw = String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 1)
+    }
+
+    /// 自动升年级是否已经生效（设的是 X 年级，现在算出来更高）
+    func didAutoUpgrade(on date: Date = Date(), calendar: Calendar = .current) -> Bool {
+        autoGrade && grade(on: date, calendar: calendar) > gradeBase
+    }
+
+    /// `date` 当天或之前最近的升年级日（某年 `month` 月 1 日）
+    static func gradeBoundary(onOrBefore date: Date, month: Int, calendar: Calendar) -> Date {
+        let parts = calendar.dateComponents([.year, .month], from: date)
+        let year = parts.year ?? 2000
+        let currentMonth = parts.month ?? 12
+        let targetYear = currentMonth >= month ? year : year - 1
+        var components = DateComponents()
+        components.year = targetYear
+        components.month = month
+        components.day = 1
+        return calendar.date(from: components) ?? date
+    }
+
+    /// (after, until] 之间跨过了几个升年级日
+    static func gradeSteps(after anchor: Date, until date: Date, month: Int, calendar: Calendar) -> Int {
+        guard anchor < date else { return 0 }
+        let startYear = calendar.component(.year, from: anchor)
+        let endYear = calendar.component(.year, from: date)
+        guard startYear <= endYear + 1 else { return 0 }
+        var steps = 0
+        for year in startYear...(endYear + 1) {
+            var components = DateComponents()
+            components.year = year
+            components.month = month
+            components.day = 1
+            guard let boundary = calendar.date(from: components) else { continue }
+            if boundary > anchor && boundary <= date { steps += 1 }
+        }
+        return steps
     }
 
     static func dayKey(for date: Date) -> String {
