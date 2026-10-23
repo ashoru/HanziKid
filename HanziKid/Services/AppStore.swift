@@ -158,6 +158,47 @@ final class AppStore: ObservableObject {
         scheduleSave()
     }
 
+    // MARK: 手动调整进度（字库总览里"勾掉 / 拉回"）
+
+    /// 某个字对这个孩子来说是什么状态（没有记录 = 还没学）
+    func cardState(profileID: UUID, hanzi: String) -> CardState {
+        schedule(profileID: profileID, hanzi: hanzi)?.state ?? .new
+    }
+
+    /// 孩子已经会了的字：直接标记为「已掌握」，不再出现在今日任务里
+    func markMastered(profileID: UUID, hanziList: [String], on date: Date = Date()) {
+        for hanzi in hanziList {
+            var schedule = schedule(profileID: profileID, hanzi: hanzi) ?? Schedule()
+            schedule.state = .mastered
+            schedule.intervalDays = max(schedule.intervalDays, Scheduler().config.graduateMinIntervalDays)
+            schedule.reps = max(schedule.reps, Scheduler().config.graduateReps)
+            schedule.due = .distantFuture
+            schedule.lastReviewedAt = date
+            applySchedule(profileID: profileID, hanzi: hanzi, schedule: schedule)
+        }
+    }
+
+    func markMastered(profileID: UUID, hanzi: String, on date: Date = Date()) {
+        markMastered(profileID: profileID, hanziList: [hanzi], on: date)
+    }
+
+    /// 之前会了、后来忘了的字：拉回学习范围（今天就开始复习）
+    func revive(profileID: UUID, hanziList: [String], on date: Date = Date()) {
+        for hanzi in hanziList {
+            var schedule = schedule(profileID: profileID, hanzi: hanzi) ?? Schedule()
+            schedule.state = .learning
+            schedule.reps = 0
+            schedule.intervalDays = 0
+            schedule.due = date           // 立刻到期 → 今天的任务里就会出现
+            schedule.lastReviewedAt = nil
+            applySchedule(profileID: profileID, hanzi: hanzi, schedule: schedule)
+        }
+    }
+
+    func revive(profileID: UUID, hanzi: String, on date: Date = Date()) {
+        revive(profileID: profileID, hanziList: [hanzi], on: date)
+    }
+
     func addLog(_ log: ReviewLog) {
         logs.append(log)
         scheduleSave()

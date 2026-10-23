@@ -357,6 +357,58 @@ func runGradeChecks() {
           && decoded.autoGrade == kid.autoGrade)
 }
 
+// MARK: - 字库总览：勾掉 / 拉回
+
+@MainActor
+func runOverviewChecks() {
+    print("字库总览：勾掉 / 拉回")
+    let store = AppStore(storage: .memory)
+    guard let kid = store.profiles.first else {
+        check("内存库里有默认档案", false)
+        return
+    }
+    let deck = ["天", "地", "人", "口"]
+
+    store.markMastered(profileID: kid.id, hanziList: deck, on: now)
+    check("勾掉后 4 个字都是已掌握",
+          deck.allSatisfy { store.cardState(profileID: kid.id, hanzi: $0) == .mastered })
+    check("勾掉的字有复习状态记录", store.states(for: kid.id).count == 4)
+
+    var plan = TodayPlanner.plan(deckHanzi: deck,
+                                 states: store.states(for: kid.id),
+                                 profile: kid,
+                                 now: now.addingTimeInterval(86400 * 30))
+    check("已掌握的字不再进今日任务", plan.items.isEmpty)
+    check("已掌握的字也不算新字", plan.pendingNewTotal == 0)
+
+    store.revive(profileID: kid.id, hanzi: "天", on: now)
+    check("拉回后状态变「在学」", store.cardState(profileID: kid.id, hanzi: "天") == .learning)
+    plan = TodayPlanner.plan(deckHanzi: deck, states: store.states(for: kid.id), profile: kid, now: now)
+    check("拉回的字出现在今天的任务里", plan.items.contains { $0.hanzi == "天" })
+    check("其他已掌握的字还是不出来", !plan.items.contains { $0.hanzi == "地" })
+
+    store.revive(profileID: kid.id, hanzi: "水", on: now)
+    check("从没学过的字也能直接拉进学习范围",
+          store.cardState(profileID: kid.id, hanzi: "水") == .learning
+          && store.states(for: kid.id).contains { $0.hanzi == "水" })
+
+    store.markMastered(profileID: kid.id, hanzi: "天", on: now)
+    check("再勾回去又变成已掌握", store.cardState(profileID: kid.id, hanzi: "天") == .mastered)
+    check("重复勾掉是幂等的", {
+        store.markMastered(profileID: kid.id, hanzi: "天", on: now)
+        return store.cardState(profileID: kid.id, hanzi: "天") == .mastered
+            && store.states(for: kid.id).filter { $0.hanzi == "天" }.count == 1
+    }())
+
+    let fresh = AppStore(storage: .memory)
+    let other = fresh.profiles[1]
+    check("还没学过的字默认是「新字」", fresh.cardState(profileID: other.id, hanzi: "天") == .new)
+    fresh.markMastered(profileID: other.id, hanziList: ["天", "地"], on: now)
+    check("两个孩子互不影响",
+          fresh.cardState(profileID: other.id, hanzi: "天") == .mastered
+          && fresh.cardState(profileID: other.id, hanzi: "人") == .new)
+}
+
 print("OCR 抽字")
 check("去掉标点、拼音和重复字",
       HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
@@ -395,6 +447,7 @@ runHandwritingChecks()
 runGradeChecks()
 
 MainActor.assumeIsolated {
+    runOverviewChecks()
     runPlannerChecks()
     runImporterChecks()
     runSettingsChecks()

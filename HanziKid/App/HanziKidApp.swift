@@ -58,6 +58,12 @@ struct RootView: View {
                 }
                 store.saveNow()
             }
+            // 截图 / 冒烟测试：--demo-mark-some 先把几个字勾成"已掌握"，看总览的混合状态
+            if ProcessInfo.processInfo.arguments.contains("--demo-mark-some"),
+               let first = store.profiles.first {
+                store.markMastered(profileID: first.id, hanziList: ["一", "二", "三", "人", "口", "手"])
+                store.saveNow()
+            }
             #endif
         }
     }

@@ -10,6 +10,7 @@ struct LibraryView: View {
     @State private var selection: Selection?
     @State private var onlyDeck = false
     @State private var showingCapture = false
+    @State private var showingOverview = false
 
     private enum SortMode: String, CaseIterable, Identifiable {
         case pinyin = "拼音"
@@ -120,11 +121,30 @@ struct LibraryView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    HStack(spacing: 14) {
+                        Button {
+                            showingOverview = true
+                        } label: {
+                            Label("总览", systemImage: "checklist")
+                        }
+                        Button("完成") { dismiss() }
+                    }
                 }
             }
             .sheet(isPresented: $showingCapture) {
                 CaptureView(profile: profile)
+            }
+            .sheet(isPresented: $showingOverview) {
+                ProgressOverviewView(profile: profile)
+            }
+            .task {
+                #if DEBUG
+                // 截图 / 冒烟测试：--demo-overview 直接打开字库总览
+                if ProcessInfo.processInfo.arguments.contains("--demo-overview") {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    showingOverview = true
+                }
+                #endif
             }
             .sheet(item: $selection) { item in
                 detailSheet(item.card)
