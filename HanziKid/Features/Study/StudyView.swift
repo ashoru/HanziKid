@@ -97,7 +97,8 @@ struct StudyView: View {
             return
         }
         let hanzi = card.hanzi
-        let words = Array(card.words(for: profile.level).prefix(3))
+        let words = card.wordsToRead(limitPerReading: profile.wordsPerCard,
+                                    includeOtherReadings: profile.readsPolyphonic)
         let repeatCount = max(1, min(5, profile.repeatCount))
         let pause = UInt64(max(0.2, profile.pauseSeconds) * 1_000_000_000)
 
@@ -126,12 +127,14 @@ struct StudyView: View {
         var texts: [String] = []
         if let card = currentCard {
             texts.append(card.hanzi)
-            texts.append(contentsOf: card.words(for: profile.level).prefix(3))
+            texts.append(contentsOf: card.wordsToRead(limitPerReading: profile.wordsPerCard,
+                                                      includeOtherReadings: profile.readsPolyphonic))
         }
         for item in session.items.dropFirst(session.index + 1).prefix(2) {
             texts.append(item.hanzi)
             if let card = lookupCard(item.hanzi) {
-                texts.append(contentsOf: card.words(for: profile.level).prefix(3))
+                texts.append(contentsOf: card.wordsToRead(limitPerReading: profile.wordsPerCard,
+                                                         includeOtherReadings: profile.readsPolyphonic))
             }
         }
         AudioCache.shared.prefetch(texts)
@@ -275,8 +278,16 @@ struct StudyView: View {
         }
     }
 
+    /// 当前显示 / 朗读的组词（按读音分组，每组取前 N 个）
+    private func shownWordGroups(_ card: CharacterCard) -> [WordGroup] {
+        card.readingGroups(limitPerReading: profile.wordsPerCard,
+                           includeOtherReadings: profile.readsPolyphonic)
+    }
+
     private func infoBody(card: CharacterCard) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let groups = shownWordGroups(card)
+        let labelsReadings = groups.count > 1
+        return VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 chip("部首 \(card.radical)")
                 chip("\(card.strokeCount) 画")
@@ -285,10 +296,19 @@ struct StudyView: View {
                 }
             }
 
-            sectionTitle("组词")
-            FlowLayout(spacing: 10) {
-                ForEach(card.words(for: profile.level), id: \.self) { word in
-                    wordButton(word)
+            if !groups.isEmpty {
+                sectionTitle("组词")
+                ForEach(groups) { group in
+                    if labelsReadings {
+                        Text(group.pinyin)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    FlowLayout(spacing: 10) {
+                        ForEach(group.words, id: \.self) { word in
+                            wordButton(word)
+                        }
+                    }
                 }
             }
 

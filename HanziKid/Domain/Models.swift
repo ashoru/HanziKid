@@ -138,6 +138,10 @@ struct Profile: Identifiable, Codable, Equatable {
     var repeatCountRaw: Int?
     /// 没有内置音频时，是否联网从百度取发音
     var onlineAudioRaw: Bool?
+    /// 每个读音读几个组词（0 = 不读词）
+    var wordsPerCardRaw: Int?
+    /// 多音字是否也把其他读音的组词读出来
+    var readsPolyphonicRaw: Bool?
     /// 每个字要写对几遍才能换下一个（0 = 不要求手写）
     var writesPerCharRaw: Int?
     /// 手写区是否显示淡色范字（描红）
@@ -178,6 +182,8 @@ struct Profile: Identifiable, Codable, Equatable {
         self.onlineAudioRaw = true
         self.writesPerCharRaw = 2
         self.handwritingGhostRaw = true
+        self.wordsPerCardRaw = 2
+        self.readsPolyphonicRaw = true
         self.gradeRaw = SchoolGrade.defaultIndex(for: level)
         self.gradeAnchorRaw = nil
         self.gradeMonthRaw = 9
@@ -211,6 +217,18 @@ struct Profile: Identifiable, Codable, Equatable {
     var onlineAudio: Bool {
         get { onlineAudioRaw ?? true }
         set { onlineAudioRaw = newValue }
+    }
+
+    /// 每个读音读几个组词（0…4）
+    var wordsPerCard: Int {
+        get { min(4, max(0, wordsPerCardRaw ?? 2)) }
+        set { wordsPerCardRaw = min(4, max(0, newValue)) }
+    }
+
+    /// 多音字是否也读其他读音的组词
+    var readsPolyphonic: Bool {
+        get { readsPolyphonicRaw ?? true }
+        set { readsPolyphonicRaw = newValue }
     }
 
     /// 每个字要写对几遍才能换下一个字（0 = 不要求手写，1…5）
@@ -366,6 +384,15 @@ struct Profile: Identifiable, Codable, Equatable {
     }
 }
 
+// MARK: - 组词（按读音分组）
+
+struct WordGroup: Codable, Equatable, Identifiable {
+    /// 该组词对应的读音（多音字每个读音一组）
+    var pinyin: String
+    var words: [String]
+    var id: String { pinyin }
+}
+
 // MARK: - 汉字字卡（全库共享）
 
 struct CharacterCard: Identifiable, Codable, Equatable {
@@ -376,7 +403,10 @@ struct CharacterCard: Identifiable, Codable, Equatable {
     var radical: String
     var strokeCount: Int
     var meaning: String
+    /// 全部组词（平铺，搜索用；顺序 = 读音组顺序）
     var words: [String]
+    /// 按读音分组的组词（多音字每个读音一组，每组 2 个常用词）
+    var wordGroups: [WordGroup]
     var frequency: Double
     /// 字库外的字（拍照/手动录入的新字）：只有字形和笔顺，内容待补全
     var needsContent: Bool
@@ -388,6 +418,7 @@ struct CharacterCard: Identifiable, Codable, Equatable {
          strokeCount: Int,
          meaning: String,
          words: [String],
+         wordGroups: [WordGroup] = [],
          frequency: Double,
          needsContent: Bool = false) {
         self.hanzi = hanzi
@@ -397,14 +428,39 @@ struct CharacterCard: Identifiable, Codable, Equatable {
         self.strokeCount = strokeCount
         self.meaning = meaning
         self.words = words
+        self.wordGroups = wordGroups
         self.frequency = frequency
         self.needsContent = needsContent
     }
 
     var isPolyphonic: Bool { pinyinAll.count > 1 }
 
+    /// 按读音分组取组词：`limitPerReading` 每个读音几个词；`includeOtherReadings` 是否连其他读音一起给
+    func readingGroups(limitPerReading: Int, includeOtherReadings: Bool) -> [WordGroup] {
+        let limit = max(0, limitPerReading)
+        guard limit > 0 else { return [] }
+        guard !wordGroups.isEmpty else {
+            let fallback = Array(words.prefix(limit))
+            return fallback.isEmpty ? [] : [WordGroup(pinyin: pinyin, words: fallback)]
+        }
+        let limited = wordGroups.map { WordGroup(pinyin: $0.pinyin, words: Array($0.words.prefix(limit))) }
+            .filter { !$0.words.isEmpty }
+        return includeOtherReadings ? limited : Array(limited.prefix(1))
+    }
+
+    /// 朗读顺序用的词序列（先主读音的词，再多音字其他读音的词）
+    func wordsToRead(limitPerReading: Int, includeOtherReadings: Bool) -> [String] {
+        readingGroups(limitPerReading: limitPerReading, includeOtherReadings: includeOtherReadings)
+            .flatMap { $0.words }
+    }
+
+    /// 主读音的组词（老的调用点用）
     func words(for level: LearnerLevel) -> [String] {
-        Array(words.prefix(level.visibleWordCount))
+        let limit = level.visibleWordCount
+        if let first = wordGroups.first {
+            return Array(first.words.prefix(limit))
+        }
+        return Array(words.prefix(limit))
     }
 }
 

@@ -10,6 +10,7 @@ struct LibraryEntry: Decodable {
     let strokeCount: Int
     let meaning: String
     let words: [String]
+    let wordGroups: [WordGroup]?
     let frequency: Double
 }
 
@@ -50,6 +51,7 @@ enum BaseLibrary {
                           strokeCount: entry.strokeCount,
                           meaning: entry.meaning,
                           words: entry.words,
+                          wordGroups: entry.wordGroups ?? [],
                           frequency: entry.frequency,
                           needsContent: false)
         }

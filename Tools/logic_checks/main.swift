@@ -409,6 +409,62 @@ func runOverviewChecks() {
           && fresh.cardState(profileID: other.id, hanzi: "人") == .new)
 }
 
+// MARK: - 组词（按读音分组）+ 朗读设置
+
+func runWordGroupChecks() {
+    print("组词与朗读设置")
+    let polyphonic = CharacterCard(
+        hanzi: "长",
+        pinyin: "zhǎng",
+        pinyinAll: ["zhǎng", "cháng"],
+        radical: "长",
+        strokeCount: 4,
+        meaning: "生长；长度",
+        words: ["长大", "校长", "长短", "长度"],
+        wordGroups: [WordGroup(pinyin: "zhǎng", words: ["长大", "校长"]),
+                     WordGroup(pinyin: "cháng", words: ["长短", "长度"])],
+        frequency: 1000
+    )
+
+    check("每个读音各两组词", polyphonic.wordGroups.count == 2)
+    check("只取主读音", polyphonic.readingGroups(limitPerReading: 2, includeOtherReadings: false).map(\.pinyin) == ["zhǎng"])
+    check("多音字也给出其他读音",
+          polyphonic.readingGroups(limitPerReading: 2, includeOtherReadings: true).map(\.pinyin) == ["zhǎng", "cháng"])
+    check("每个读音最多 2 个词",
+          polyphonic.readingGroups(limitPerReading: 2, includeOtherReadings: true).allSatisfy { $0.words.count <= 2 })
+    check("限制为 1 时每个读音只剩 1 个词",
+          polyphonic.readingGroups(limitPerReading: 1, includeOtherReadings: true).allSatisfy { $0.words.count == 1 })
+    check("不读词时返回空", polyphonic.readingGroups(limitPerReading: 0, includeOtherReadings: true).isEmpty)
+    check("朗读顺序：字之后的词按读音排",
+          polyphonic.wordsToRead(limitPerReading: 2, includeOtherReadings: true) == ["长大", "校长", "长短", "长度"])
+    check("关掉多音字只读主读音的词",
+          polyphonic.wordsToRead(limitPerReading: 2, includeOtherReadings: false) == ["长大", "校长"])
+
+    let single = CharacterCard(hanzi: "天", pinyin: "tiān", pinyinAll: ["tiān"], radical: "大",
+                               strokeCount: 4, meaning: "天空", words: ["天空", "白天"],
+                               wordGroups: [WordGroup(pinyin: "tiān", words: ["天空", "白天"])], frequency: 900)
+    check("单读音字也只有一组", single.readingGroups(limitPerReading: 2, includeOtherReadings: true).count == 1)
+    check("没有分组数据时退回平铺词表",
+          CharacterCard(hanzi: "龘", pinyin: "", pinyinAll: [], radical: "", strokeCount: 3,
+                        meaning: "", words: ["龘龘"], frequency: 0, needsContent: true)
+              .readingGroups(limitPerReading: 2, includeOtherReadings: true).count == 1)
+
+    var profile = Profile(name: "豆豆", level: .preschool, emoji: "🐣")
+    check("默认每个词读 2 个", profile.wordsPerCard == 2)
+    check("默认读多音字", profile.readsPolyphonic)
+    profile.wordsPerCard = 9
+    check("每个词最多 4 个", profile.wordsPerCard == 4)
+    profile.wordsPerCard = -2
+    check("负数归零（= 不读词）", profile.wordsPerCard == 0)
+    profile.wordsPerCard = 2
+    profile.readsPolyphonic = false
+    check("设置能改", profile.wordsPerCard == 2 && profile.readsPolyphonic == false)
+    var legacy = Profile(name: "老档案", level: .primary, emoji: "🦁")
+    legacy.wordsPerCardRaw = nil
+    legacy.readsPolyphonicRaw = nil
+    check("老存档缺字段用默认值", legacy.wordsPerCard == 2 && legacy.readsPolyphonic)
+}
+
 print("OCR 抽字")
 check("去掉标点、拼音和重复字",
       HanziText.extract("春天来了，小草绿了。chūn tiān") == ["春", "天", "来", "了", "小", "草", "绿"])
@@ -445,6 +501,7 @@ func runImporterChecks() {
 
 runHandwritingChecks()
 runGradeChecks()
+runWordGroupChecks()
 
 MainActor.assumeIsolated {
     runOverviewChecks()

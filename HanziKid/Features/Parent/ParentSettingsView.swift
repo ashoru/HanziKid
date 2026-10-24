@@ -144,6 +144,32 @@ struct ParentSettingsView: View {
                         }
 
                         Stepper(value: Binding(
+                            get: { profile.wordsPerCard },
+                            set: { newValue in store.updateProfile(profile.id) { $0.wordsPerCard = newValue } }
+                        ), in: 0...4) {
+                            HStack {
+                                Text("每个词读几个")
+                                Spacer()
+                                Text(profile.wordsPerCard == 0 ? "不读词" : "\(profile.wordsPerCard) 个")
+                                    .foregroundStyle(Theme.accent)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { profile.readsPolyphonic },
+                            set: { newValue in store.updateProfile(profile.id) { $0.readsPolyphonic = newValue } }
+                        )) {
+                            Text("多音字也读其他读音的组词")
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("组词都是词典里能查到的常用词，每个读音两个；关掉上面这个开关就只读最常用的那个读音。")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.inkFaint)
+                        }
+
+                        Stepper(value: Binding(
                             get: { profile.writesPerChar },
                             set: { newValue in store.updateProfile(profile.id) { $0.writesPerChar = newValue } }
                         ), in: 0...5) {
