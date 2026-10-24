@@ -28,6 +28,10 @@
 |---|---|---|
 | ![](docs/screenshots/17-字库总览.png) | ![](docs/screenshots/18-总览入口.png) | ![](docs/screenshots/19-已掌握可拉回.png) |
 
+| 多音字：每个读音 2 个词 |
+|---|
+| ![](docs/screenshots/20-多音字组词.png) |
+
 产品设计文档见 [`docs/识字App设计方案.md`](docs/识字App设计方案.md)。
 
 ---
